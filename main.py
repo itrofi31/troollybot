@@ -49,11 +49,6 @@ class SupportForm(StatesGroup):
 buy_inline = InlineKeyboardMarkup()
 buy_inline.add(InlineKeyboardButton("💳 Оплатить доступ", callback_data="buy"))
 
-@dp.message_handler(commands=['start'])
-async def start(message: types.Message):
-    print("user_id:", message.from_user.id)
-    await message.answer(f"Ваш Telegram ID: {message.from_user.id}")
-    
 # ---------- Показываем меню при любом сообщении ----------
 @dp.message_handler()
 async def any_message(message: types.Message):
