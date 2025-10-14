@@ -10,10 +10,23 @@ from dotenv import load_dotenv
 # Загружаем конфигурацию
 load_dotenv()
 
+# Validate required environment variables
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 PROVIDER_TOKEN = os.getenv("PROVIDER_TOKEN")
-CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
-SUPPORT_USER_ID = int(os.getenv("SUPPORT_USER_ID")) 
+CHANNEL_ID = os.getenv("CHANNEL_ID")
+SUPPORT_USER_ID = os.getenv("SUPPORT_USER_ID")
+
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN environment variable is required")
+if not PROVIDER_TOKEN:
+    raise ValueError("PROVIDER_TOKEN environment variable is required")
+if not CHANNEL_ID:
+    raise ValueError("CHANNEL_ID environment variable is required")
+if not SUPPORT_USER_ID:
+    raise ValueError("SUPPORT_USER_ID environment variable is required")
+
+CHANNEL_ID = int(CHANNEL_ID)
+SUPPORT_USER_ID = int(SUPPORT_USER_ID)
 PRICE = int(os.getenv("PRICE", "30000"))  # цена в копейках
 
 bot = Bot(token=BOT_TOKEN)
@@ -92,7 +105,7 @@ async def successful_payment(message: types.Message):
         reply_markup=main_menu
     )
     
-	# ---------- Приём сообщений от пользователя для поддержки ----------
+        # ---------- Приём сообщений от пользователя для поддержки ----------
 @dp.message_handler(state=SupportForm.waiting_for_message)
 async def process_support_message(message: types.Message, state: FSMContext):
     try:
@@ -103,7 +116,7 @@ async def process_support_message(message: types.Message, state: FSMContext):
             f"Новый запрос от @{message.from_user.username or message.from_user.full_name} (ID {message.from_user.id}):\n\n{message.text}"
         )
          await message.answer(
-            f"✅ Ваш запрос отправлен администратору, спасибо! channelid:{CHANNEL_ID}SUPPORT_USER_ID:{SUPPORT_USER_ID}",
+            "✅ Ваш запрос отправлен администратору, спасибо!",
             reply_markup=main_menu
         )
     except exceptions.BotBlocked:
@@ -113,24 +126,21 @@ async def process_support_message(message: types.Message, state: FSMContext):
     await state.finish()
 
 
+async def on_startup(dp):
+    from aiohttp import web
     
+    async def handle(request):
+        return web.Response(text="Bot is alive!")
+    
+    app = web.Application()
+    app.router.add_get("/", handle)
+    
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, host="0.0.0.0", port=8080)
+    await site.start()
+    print("🌐 Uptime server started on port 8080")
+
 if __name__ == "__main__":
-  print("🚀 Бот запущен и работает 24/7")
-  executor.start_polling(dp, skip_updates=True)
-  
-	# Добавляем для uptime-пинга
-from aiohttp import web
-
-async def handle(request):
-    return web.Response(text="Bot is alive!")
-
-app = web.Application()
-app.router.add_get("/", handle)
-
-# Запускаем в фоне
-import threading
-
-def run_uptime_server():
-    web.run_app(app, host="0.0.0.0", port=8080)
-
-threading.Thread(target=run_uptime_server, daemon=True).start()
+    print("🚀 Бот запущен и работает 24/7")
+    executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
