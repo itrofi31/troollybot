@@ -57,6 +57,8 @@ buy_full_inline = InlineKeyboardMarkup().add(
 # ---------- FSM поддержки ----------
 class SupportForm(StatesGroup):
     waiting_for_message = State()
+class PaymentForm(StatesGroup):
+    waiting_for_email = State()
 
 # ---------- Обработка сообщений ----------
 @dp.message_handler(commands=["start"])
@@ -110,25 +112,64 @@ async def any_message(message: types.Message):
 # ---------- Callback оплаты ----------
 @dp.callback_query_handler(lambda c: c.data in ["buy_month", "buy_full"])
 async def process_buy_callback(callback_query: types.CallbackQuery):
+    # Сохраняем какой тип подписки хочет купить
+    await dp.current_state(user=callback_query.from_user.id).update_data(subscription_type=callback_query.data)
+    
+    await bot.send_message(
+        callback_query.from_user.id,
+        "Пожалуйста, укажите ваш email для получения чека:"
+    )
+    await PaymentForm.waiting_for_email.set()
+    
+@dp.message_handler(state=PaymentForm.waiting_for_email)
+async def process_email(message: types.Message, state: FSMContext):
+    email = message.text.strip()
+    if "@" not in email:  # простая проверка
+        await message.answer("⚠️ Пожалуйста, введите корректный email.")
+        return
+    
+    data = await state.get_data()
+    subscription_type = data.get("subscription_type")
+
+    label = "Полный доступ" if subscription_type == "buy_full" else "Месячный доступ"
+    amount = FULL_PRICE if subscription_type == "buy_full" else MONTH_PRICE
+    prices = [LabeledPrice(label=label, amount=amount)]
+    
+    # Формируем provider_data для фискализации
+    provider_data = {
+        "receipt": {
+            "customer": {"email": email},
+            "items": [
+                {
+                    "description": label,
+                    "quantity": 1,
+                    "amount": {"value": amount / 100, "currency": "RUB"},
+                    "vat_code": 1,  # ставка НДС 20%
+                    "payment_mode": "full_payment",
+                    "payment_subject": "service"
+                }
+            ],
+            "tax_system_code": 1
+        }
+    }
+
     try:
-        label = "Полный доступ" if callback_query.data == "buy_full" else "Месячный доступ"
-        amount = MONTH_PRICE if callback_query.data == "buy_month" else FULL_PRICE
-        prices = [LabeledPrice(label=label, amount=amount)]
-        print(prices)
-        print(PROVIDER_TOKEN)
         await bot.send_invoice(
-            callback_query.from_user.id,
+            chat_id=message.from_user.id,
             title=label,
-            description=f"Оплатить доступ в книжный клуб",
-            payload=callback_query.data,
+            description=f"{label} в книжный клуб",
+            payload=subscription_type,
             provider_token=PROVIDER_TOKEN,
             currency="RUB",
             prices=prices,
-            start_parameter=callback_query.data
+            start_parameter=subscription_type,
+            provider_data=provider_data
         )
     except Exception as e:
-        logging.exception(f"Ошибка при отправке счета пользователю {callback_query.from_user.id}: {e}")
-        await callback_query.answer("⚠️ Не удалось создать счет. Попробуйте позже.", show_alert=True)
+        logging.exception(f"Ошибка при отправке счета пользователю {message.from_user.id}: {e}")
+        await message.answer("⚠️ Не удалось создать счет. Попробуйте позже.", reply_markup=main_menu)
+    
+    await state.finish()
 
 @dp.pre_checkout_query_handler(lambda q: True)
 async def pre_checkout(pre_checkout_query: types.PreCheckoutQuery):
