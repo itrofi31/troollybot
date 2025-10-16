@@ -37,14 +37,13 @@ dp = Dispatcher(bot, storage=storage)
 # ---------- Инициализация БД ----------
 db = Database()
 
-async def get_channel_id():
-    await bot.send_message(CHANNEL_ID, "Привет! Это тестовое сообщение.")
 # ---------- Меню ----------
 main_menu = ReplyKeyboardMarkup(resize_keyboard=True)
 main_menu.add(
     KeyboardButton("💳 Доступ на месяц"),
     KeyboardButton("📚 Полный доступ"),
-    KeyboardButton("ℹ️ О клубе")
+    KeyboardButton("ℹ️ О клубе"),
+    KeyboardButton("📊 Текущий статус")
 )
 main_menu.add(KeyboardButton("📞 Поддержка"))
 
@@ -66,19 +65,33 @@ async def start_command(message: types.Message):
 
 @dp.message_handler()
 async def any_message(message: types.Message):
+    if not message.text:
+        return
     if message.text.startswith("/"):
         return
 
-    if message.text == "💳 Купить доступ на месяц":
+    if message.text == "💳 Доступ на месяц":
         await message.answer(
             f"💰 Доступ в книжный клуб на 30 дней: {MONTH_PRICE/100:.2f} ₽\nНажми кнопку ниже, чтобы оплатить 👇",
             reply_markup=buy_month_inline
         )
-    elif message.text == "📚 Полный доступ в книжный клуб":
+    elif message.text == "📚 Полный доступ":
         await message.answer(
             f"💰 Полный доступ: {FULL_PRICE/100:.2f} ₽\nНажми кнопку ниже, чтобы оплатить 👇",
             reply_markup=buy_full_inline
         )
+    elif message.text == "📊 Текущий статус":
+        expiry = db.get_expiry(message.from_user.id)
+        full = db.has_full_access(message.from_user.id)
+        info = "📊 Ваш текущий статус:"
+        if full:
+            info += "\n✅ У вас полный доступ."
+        elif expiry and expiry > datetime.now():
+            days_left = (expiry - datetime.now()).days
+            info += f"\n✅ Ваша подписка активна ещё {days_left} дней."
+        else:
+            info += "\n❌ Ваша подписка ещё не активна"
+        await message.answer(info, reply_markup=main_menu)
     elif message.text == "ℹ️ О клубе":
         info = (
             "📘 Добро пожаловать в книжный клуб! После оплаты вы получите доступ к эксклюзивному контенту.\n"
@@ -87,13 +100,6 @@ async def any_message(message: types.Message):
             "Полный доступ: 1300 руб.\n"
             "Если есть вопросы, нажмите 📞 Поддержка."
         )
-        expiry = db.get_expiry(message.from_user.id)
-        full = db.has_full_access(message.from_user.id)
-        if full:
-            info += "\n✅ У вас полный доступ."
-        elif expiry and expiry > datetime.now():
-            days_left = (expiry - datetime.now()).days
-            info += f"\n✅ Ваша подписка активна ещё {days_left} дней."
         await message.answer(info, reply_markup=main_menu)
     elif message.text == "📞 Поддержка":
         await message.answer("📝 Опишите вашу проблему. Я передам её администратору.")
@@ -105,14 +111,15 @@ async def any_message(message: types.Message):
 @dp.callback_query_handler(lambda c: c.data in ["buy_month", "buy_full"])
 async def process_buy_callback(callback_query: types.CallbackQuery):
     try:
-        label = "Полный доступ" if callback_query.data == "subscription_full" else "Месячный доступ"
-        amount = 50000 if callback_query.data == "subscription_month" else 150000
+        label = "Полный доступ" if callback_query.data == "buy_full" else "Месячный доступ"
+        amount = MONTH_PRICE if callback_query.data == "buy_month" else FULL_PRICE
         prices = [LabeledPrice(label=label, amount=amount)]
-        
+        print(prices)
+        print(PROVIDER_TOKEN)
         await bot.send_invoice(
             callback_query.from_user.id,
             title=label,
-            description=f"{label} в книжный клуб",
+            description=f"Оплатить доступ в книжный клуб",
             payload=callback_query.data,
             provider_token=PROVIDER_TOKEN,
             currency="RUB",
