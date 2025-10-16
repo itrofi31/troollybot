@@ -1,22 +1,19 @@
 import sqlite3
 from datetime import datetime, timedelta
 
-
 class Database:
     def __init__(self, path="subscriptions.db"):
-        self.conn = sqlite3.connect(path, check_same_thread=False)
-        self.cur = self.conn.cursor()
-        self._create_tables()
+        self.db = sqlite3.connect(path)
+        self.cur = self.db.cursor()
 
-    def _create_tables(self):
-        # Главная таблица активных подписок
+        # Таблица подписок
         self.cur.execute("""
         CREATE TABLE IF NOT EXISTS subscriptions (
             user_id INTEGER PRIMARY KEY,
             username TEXT,
             expiry_date TEXT,
-            status TEXT DEFAULT 'active',
-            last_payment TEXT
+            full_access INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'active'
         )
         """)
 
@@ -25,72 +22,85 @@ class Database:
         CREATE TABLE IF NOT EXISTS payments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER,
-            username TEXT,
             amount INTEGER,
             currency TEXT,
             payment_date TEXT,
             expiry_date TEXT,
-            FOREIGN KEY (user_id) REFERENCES subscriptions (user_id)
+            full_access INTEGER DEFAULT 0
         )
         """)
 
-        self.conn.commit()
+        self.db.commit()
 
-    # ---------- Работа с подписками ----------
-    def get_expiry(self, user_id: int):
-        self.cur.execute("SELECT expiry_date FROM subscriptions WHERE user_id=?", (user_id,))
-        result = self.cur.fetchone()
-        if result:
-            return datetime.fromisoformat(result[0])
-        return None
+    # ---------- Подписка ----------
+    def add_or_update_subscription(self, user_id, username, months=1, full_access=False, amount=0, currency="RUB"):
+        now = datetime.now()
 
-    def add_or_update_subscription(self, user_id: int, username: str, amount: int = 0, currency: str = "RUB"):
-        expiry_old = self.get_expiry(user_id)
-        if expiry_old and expiry_old > datetime.now():
-            new_expiry = expiry_old + timedelta(days=30)
+        if full_access:
+            expiry = None  # полная подписка бессрочная
+            self.cur.execute("""
+            INSERT OR REPLACE INTO subscriptions (user_id, username, expiry_date, full_access, status)
+            VALUES (?, ?, ?, 1, 'active')
+            """, (user_id, username, expiry))
         else:
-            new_expiry = datetime.now() + timedelta(days=30)
+            # продлеваем месячную подписку
+            self.cur.execute("SELECT expiry_date FROM subscriptions WHERE user_id=?", (user_id,))
+            result = self.cur.fetchone()
+            if result and result[0]:
+                old_expiry = datetime.fromisoformat(result[0])
+                if old_expiry > now:
+                    expiry = old_expiry + timedelta(days=30*months)
+                else:
+                    expiry = now + timedelta(days=30*months)
+            else:
+                expiry = now + timedelta(days=30*months)
 
-        now = datetime.now().isoformat()
+            self.cur.execute("""
+            INSERT OR REPLACE INTO subscriptions (user_id, username, expiry_date, full_access, status)
+            VALUES (?, ?, ?, 0, 'active')
+            """, (user_id, username, expiry.isoformat()))
 
-        # Обновляем таблицу подписок
+        # ---------- Лог оплаты ----------
+        payment_expiry = expiry.isoformat() if expiry else None
         self.cur.execute("""
-        INSERT OR REPLACE INTO subscriptions (user_id, username, expiry_date, status, last_payment)
-        VALUES (?, ?, ?, ?, ?)
-        """, (user_id, username, new_expiry.isoformat(), "active", now))
-
-        # Добавляем запись в историю оплат
-        self.cur.execute("""
-        INSERT INTO payments (user_id, username, amount, currency, payment_date, expiry_date)
+        INSERT INTO payments (user_id, amount, currency, payment_date, expiry_date, full_access)
         VALUES (?, ?, ?, ?, ?, ?)
-        """, (user_id, username, amount, currency, now, new_expiry.isoformat()))
+        """, (user_id, amount, currency, now.isoformat(), payment_expiry, int(full_access)))
 
-        self.conn.commit()
-        return new_expiry
+        self.db.commit()
+        return expiry
 
-    def get_all_subscriptions(self):
-        self.cur.execute("SELECT user_id, username, expiry_date, status FROM subscriptions")
-        return self.cur.fetchall()
-
-    def expire_user(self, user_id: int):
-        self.cur.execute("UPDATE subscriptions SET status='expired' WHERE user_id=?", (user_id,))
-        self.conn.commit()
-
-    def delete_user(self, user_id: int):
-        self.cur.execute("DELETE FROM subscriptions WHERE user_id=?", (user_id,))
-        self.conn.commit()
+    # ---------- Получить дату окончания подписки ----------
+    def get_expiry(self, user_id):
+        self.cur.execute("SELECT expiry_date, full_access FROM subscriptions WHERE user_id=?", (user_id,))
+        result = self.cur.fetchone()
+        if not result:
+            return None
+        expiry, full_access = result
+        if full_access:
+            return datetime.max  # полная подписка бессрочная
+        return datetime.fromisoformat(expiry) if expiry else None
 
     # ---------- История оплат ----------
-    def get_user_payments(self, user_id: int):
+    def get_user_payments(self, user_id):
         self.cur.execute("""
-        SELECT payment_date, amount, currency, expiry_date FROM payments
-        WHERE user_id=? ORDER BY payment_date DESC
+        SELECT payment_date, amount, currency, expiry_date, full_access
+        FROM payments WHERE user_id=?
+        ORDER BY payment_date DESC
         """, (user_id,))
         return self.cur.fetchall()
 
-    def get_last_payment(self, user_id: int):
+    # ---------- Все подписки ----------
+    def get_all_subscriptions(self):
         self.cur.execute("""
-        SELECT payment_date, amount, currency FROM payments
-        WHERE user_id=? ORDER BY payment_date DESC LIMIT 1
+        SELECT user_id, username, expiry_date, full_access, status
+        FROM subscriptions
+        """)
+        return self.cur.fetchall()
+
+    # ---------- Истекшая подписка ----------
+    def expire_user(self, user_id):
+        self.cur.execute("""
+        UPDATE subscriptions SET status='expired' WHERE user_id=?
         """, (user_id,))
-        return self.cur.fetchone()
+        self.db.commit()
