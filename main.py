@@ -18,8 +18,9 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 PROVIDER_TOKEN = os.getenv("PROVIDER_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 SUPPORT_USER_ID = int(os.getenv("SUPPORT_USER_ID"))
-PRICE = int(os.getenv("PRICE", "30000"))      # Месячный доступ
-FULL_PRICE = int(os.getenv("FULL_PRICE", "50000"))  # Полный доступ
+MONTH_PRICE = int(os.getenv("MONTH_PRICE", "50000"))      # Месячный доступ
+FULL_PRICE = int(os.getenv("FULL_PRICE", "130000"))  # Полный доступ
+INVITE_LINK = os.getenv("INVITE_LINK")
 
 bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
@@ -28,6 +29,8 @@ dp = Dispatcher(bot, storage=storage)
 # ---------- Инициализация БД ----------
 db = Database()
 
+async def get_channel_id():
+    await bot.send_message(CHANNEL_ID, "Привет! Это тестовое сообщение.")
 # ---------- Меню ----------
 main_menu = ReplyKeyboardMarkup(resize_keyboard=True)
 main_menu.add(
@@ -51,6 +54,8 @@ class SupportForm(StatesGroup):
 # ---------- Обработка сообщений ----------
 @dp.message_handler(commands=["start"])
 async def start_command(message: types.Message):
+    print("CNAHHel IND",CHANNEL_ID)
+    await get_channel_id()
     await message.answer("👋 Привет! Выберите действие из меню 👇", reply_markup=main_menu)
 
 @dp.message_handler()
@@ -60,7 +65,7 @@ async def any_message(message: types.Message):
 
     if message.text == "💳 Купить доступ на месяц":
         await message.answer(
-            f"💰 Месячный доступ: {PRICE/100:.2f} ₽\nНажми кнопку ниже, чтобы оплатить 👇",
+            f"💰 Месячный доступ: {MONTH_PRICE/100:.2f} ₽\nНажми кнопку ниже, чтобы оплатить 👇",
             reply_markup=buy_month_inline
         )
     elif message.text == "📚 Купить полный доступ":
@@ -89,7 +94,7 @@ async def any_message(message: types.Message):
 async def process_buy_callback(callback_query: types.CallbackQuery):
     if callback_query.data == "buy_month":
         label = "Доступ на 1 месяц"
-        amount = PRICE
+        amount = MONTH_PRICE
         payload = "subscription_1m"
     else:
         label = "Полный доступ"
@@ -121,12 +126,13 @@ async def successful_payment(message: types.Message):
     elif payload == "subscription_full":
         new_expiry = db.add_or_update_subscription(message.from_user.id, message.from_user.username, full_access=True)
 
-    invite = await bot.create_chat_invite_link(chat_id=CHANNEL_ID, member_limit=1)
+    # invite = await bot.create_chat_invite_link(chat_id=CHANNEL_ID, member_limit=1)
     expiry = {new_expiry.strftime('%d.%m.%Y')}
     await message.answer(
         f"✅ Оплата успешно получена!\n"
         f"{'Полный доступ' if payload == 'subscription_full' else f'Подписка до {expiry}'}\n\n"
-        f"Ссылка на канал:\n{invite.invite_link}",
+        # f"Ссылка на канал:\n{invite.invite_link}",
+        f"Ссылка на канал:\n{INVITE_LINK}",
         reply_markup=main_menu
     )
 
