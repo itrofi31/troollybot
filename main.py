@@ -44,6 +44,33 @@ class SupportForm(StatesGroup):
     waiting_for_message = State()
 
 # ---------- Команды ----------
+@dp.message_handler(commands=["start"])
+async def start_command(message: types.Message):
+    await message.answer(
+        "👋 Привет! Добро пожаловать в наш бот.\nВыберите действие из меню 👇",
+        reply_markup=main_menu
+    )
+    
+# ---------- История оплат ----------
+@dp.message_handler(commands=["payments"])
+async def payments_history(message: types.Message):
+    # Получаем все платежи пользователя
+    await message.answer("Получаем ваши платежи...")
+
+    payments = db.get_user_payments(message.from_user.id)
+    
+    if not payments:
+        await message.answer("❌ У вас пока нет оплат.")
+        return
+
+    text = "💳 История оплат:\n\n"
+    for payment_date, amount, currency, expiry_date in payments[:10]:  # последние 10
+        amount_rub = amount / 100  # если в копейках
+        expiry_str = datetime.fromisoformat(expiry_date).strftime("%d.%m.%Y")
+        text += f"📅 {payment_date[:16]} — {amount_rub:.2f} {currency} — до {expiry_str}\n"
+
+    await message.answer(text)
+
 @dp.message_handler()
 async def any_message(message: types.Message):
     if message.text == "💳 Купить доступ":
@@ -55,9 +82,15 @@ async def any_message(message: types.Message):
         expiry = db.get_expiry(message.from_user.id)
         if expiry and expiry > datetime.now():
             remain = (expiry - datetime.now()).days
-            await message.answer(f"✅ Ваша подписка активна ещё {remain} дней.", reply_markup=main_menu)
+            await message.answer(
+                f"✅ Ваша подписка активна ещё {remain} дней.",
+                reply_markup=main_menu
+            )
         else:
-            await message.answer("📘 Это закрытый канал. После оплаты вы получите доступ.", reply_markup=main_menu)
+            await message.answer(
+                "📘 Это закрытый канал. После оплаты вы получите доступ.",
+                reply_markup=main_menu
+            )
     elif message.text == "📞 Поддержка":
         await message.answer("📝 Опишите вашу проблему. Я передам её администратору.")
         await SupportForm.waiting_for_message.set()
