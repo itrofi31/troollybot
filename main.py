@@ -60,7 +60,7 @@ async def payments_history(message: types.Message):
     payments = db.get_user_payments(message.from_user.id)
     
     if not payments:
-        await message.answer("❌ У вас пока нет оплат.")
+        await message.answer("❌ У вас пока нет оплат.", reply_markup=main_menu)
         return
 
     text = "💳 История оплат:\n\n"
@@ -69,7 +69,7 @@ async def payments_history(message: types.Message):
         expiry_str = datetime.fromisoformat(expiry_date).strftime("%d.%m.%Y")
         text += f"📅 {payment_date[:16]} — {amount_rub:.2f} {currency} — до {expiry_str}\n"
 
-    await message.answer(text)
+    await message.answer(text, reply_markup=main_menu)
 
 @dp.message_handler()
 async def any_message(message: types.Message):
@@ -103,7 +103,7 @@ async def process_buy_callback(callback_query: types.CallbackQuery):
     prices = [LabeledPrice(label="Доступ на 1 месяц", amount=PRICE)]
     await bot.send_invoice(
         callback_query.from_user.id,
-        title="Подписка на канал",
+        title="Подписка на книжный клуб📚",
         description="Доступ к закрытому Telegram-каналу на 1 месяц",
         payload="subscription_1m",
         provider_token=PROVIDER_TOKEN,
@@ -159,11 +159,16 @@ async def check_subscriptions():
                     pass
             elif expiry < datetime.now() and status == "active":
                 try:
-                    await bot.send_message(user_id, "🚫 Подписка истекла. Для продления оплатите заново.")
+                    await bot.send_message(user_id, "🚫 Подписка истекла.")
+                except exceptions.BotBlocked:
+                    print(f"Пользователь {user_id} заблокировал бота, уведомление не доставлено")
+
+                try:
                     await bot.ban_chat_member(CHANNEL_ID, user_id)
                     await bot.unban_chat_member(CHANNEL_ID, user_id)
                 except Exception as e:
                     print(f"⚠️ Ошибка при удалении {user_id}: {e}")
+
                 db.expire_user(user_id)
         await asyncio.sleep(3600)  # проверяем каждый час
 
