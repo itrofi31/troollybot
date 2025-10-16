@@ -1,5 +1,6 @@
 import os
 import asyncio
+import logging
 from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import LabeledPrice, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
@@ -10,6 +11,13 @@ from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from dotenv import load_dotenv
 
 from database import Database  # Работа с БД вынесена в отдельный файл database.py
+
+# ---------- Логирование ----------
+logging.basicConfig(
+    filename="bot_errors.log",       # файл, куда сохраняем ошибки
+    level=logging.INFO,              # уровень логов
+    format="%(asctime)s [%(levelname)s] %(message)s"
+)
 
 # ---------- Настройки ----------
 load_dotenv()
@@ -34,8 +42,8 @@ async def get_channel_id():
 # ---------- Меню ----------
 main_menu = ReplyKeyboardMarkup(resize_keyboard=True)
 main_menu.add(
-    KeyboardButton("💳 Купить доступ на месяц"),
-    KeyboardButton("📚 Купить полный доступ"),
+    KeyboardButton("💳 Доступ на месяц"),
+    KeyboardButton("📚 Полный доступ"),
     KeyboardButton("ℹ️ О клубе")
 )
 main_menu.add(KeyboardButton("📞 Поддержка"))
@@ -54,8 +62,6 @@ class SupportForm(StatesGroup):
 # ---------- Обработка сообщений ----------
 @dp.message_handler(commands=["start"])
 async def start_command(message: types.Message):
-    print("CNAHHel IND",CHANNEL_ID)
-    await get_channel_id()
     await message.answer("👋 Привет! Выберите действие из меню 👇", reply_markup=main_menu)
 
 @dp.message_handler()
@@ -65,16 +71,22 @@ async def any_message(message: types.Message):
 
     if message.text == "💳 Купить доступ на месяц":
         await message.answer(
-            f"💰 Месячный доступ: {MONTH_PRICE/100:.2f} ₽\nНажми кнопку ниже, чтобы оплатить 👇",
+            f"💰 Доступ в книжный клуб на 30 дней: {MONTH_PRICE/100:.2f} ₽\nНажми кнопку ниже, чтобы оплатить 👇",
             reply_markup=buy_month_inline
         )
-    elif message.text == "📚 Купить полный доступ":
+    elif message.text == "📚 Полный доступ в книжный клуб":
         await message.answer(
             f"💰 Полный доступ: {FULL_PRICE/100:.2f} ₽\nНажми кнопку ниже, чтобы оплатить 👇",
             reply_markup=buy_full_inline
         )
     elif message.text == "ℹ️ О клубе":
-        info = "📘 Добро пожаловать в книжный клуб! После оплаты вы получите доступ к эксклюзивному контенту."
+        info = (
+            "📘 Добро пожаловать в книжный клуб! После оплаты вы получите доступ к эксклюзивному контенту.\n"
+            "Здесь вы найдёте подборки, обсуждения и многое другое.\n"
+            "Доступ на один месяц: 500 руб.\n"
+            "Полный доступ: 1300 руб.\n"
+            "Если есть вопросы, нажмите 📞 Поддержка."
+        )
         expiry = db.get_expiry(message.from_user.id)
         full = db.has_full_access(message.from_user.id)
         if full:
@@ -92,55 +104,56 @@ async def any_message(message: types.Message):
 # ---------- Callback оплаты ----------
 @dp.callback_query_handler(lambda c: c.data in ["buy_month", "buy_full"])
 async def process_buy_callback(callback_query: types.CallbackQuery):
-    if callback_query.data == "buy_month":
-        label = "Доступ на 1 месяц"
-        amount = MONTH_PRICE
-        payload = "subscription_1m"
-    else:
-        label = "Полный доступ"
-        amount = FULL_PRICE
-        payload = "subscription_full"
-
-    prices = [LabeledPrice(label=label, amount=amount)]
-    await bot.send_invoice(
-        callback_query.from_user.id,
-        title=label,
-        description=f"{label} в книжный клуб",
-        payload=payload,
-        provider_token=PROVIDER_TOKEN,
-        currency="RUB",
-        prices=prices,
-        start_parameter=payload
-    )
+    try:
+        label = "Полный доступ" if callback_query.data == "subscription_full" else "Месячный доступ"
+        amount = 50000 if callback_query.data == "subscription_month" else 150000
+        prices = [LabeledPrice(label=label, amount=amount)]
+        
+        await bot.send_invoice(
+            callback_query.from_user.id,
+            title=label,
+            description=f"{label} в книжный клуб",
+            payload=callback_query.data,
+            provider_token=PROVIDER_TOKEN,
+            currency="RUB",
+            prices=prices,
+            start_parameter=callback_query.data
+        )
+    except Exception as e:
+        logging.exception(f"Ошибка при отправке счета пользователю {callback_query.from_user.id}: {e}")
+        await callback_query.answer("⚠️ Не удалось создать счет. Попробуйте позже.", show_alert=True)
 
 @dp.pre_checkout_query_handler(lambda q: True)
 async def pre_checkout(pre_checkout_query: types.PreCheckoutQuery):
-    await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
+    try:
+        await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
+    except Exception as e:
+        logging.exception(f"Ошибка pre_checkout для {pre_checkout_query.from_user.id}: {e}")
 
 @dp.message_handler(content_types=types.ContentType.SUCCESSFUL_PAYMENT)
 async def successful_payment(message: types.Message):
-    payload = message.successful_payment.invoice_payload
+    try:
+        new_expiry = db.add_or_update_subscription(
+            message.from_user.id,
+            message.from_user.username,
+            months=1,
+            full_access=(message.successful_payment.invoice_payload=="subscription_full"),
+            amount=message.successful_payment.total_amount,
+            currency=message.successful_payment.currency
+        )
 
-    if payload == "subscription_1m":
-        new_expiry = db.add_or_update_subscription(message.from_user.id, message.from_user.username, months=1)
-    elif payload == "subscription_full":
-        new_expiry = db.add_or_update_subscription(message.from_user.id, message.from_user.username, full_access=True)
-
-    # invite = await bot.create_chat_invite_link(chat_id=CHANNEL_ID, member_limit=1)
-    expiry = {new_expiry.strftime('%d.%m.%Y')}
-    await message.answer(
-        f"✅ Оплата успешно получена!\n"
-        f"{'Полный доступ' if payload == 'subscription_full' else f'Подписка до {expiry}'}\n\n"
-        # f"Ссылка на канал:\n{invite.invite_link}",
-        f"Ссылка на канал:\n{INVITE_LINK}",
-        reply_markup=main_menu
-    )
-
-    # Логирование
-    with open("payments.log", "a", encoding="utf-8") as f:
-        f.write(f"[{datetime.now():%Y-%m-%d %H:%M}] {message.from_user.id} @{message.from_user.username} — {payload}\n")
-
-# ---------- Поддержка ----------
+        invite = await bot.create_chat_invite_link(chat_id=CHANNEL_ID, member_limit=1)
+        await message.answer(
+            f"✅ Оплата успешно получена!\n"
+            f"Подписка активна до {new_expiry.strftime('%d.%m.%Y') if new_expiry else 'бессрочно'}.\n\n"
+            f"Вот ссылка на канал:\n{invite.invite_link}",
+            reply_markup=main_menu
+        )
+    except Exception as e:
+        logging.exception(f"Ошибка при обработке успешной оплаты пользователя {message.from_user.id}: {e}")
+        await message.answer("⚠️ Произошла ошибка при регистрации оплаты. Администратор уже уведомлен.")
+        
+				# ---------- Поддержка ----------
 @dp.message_handler(state=SupportForm.waiting_for_message)
 async def process_support_message(message: types.Message, state: FSMContext):
     try:

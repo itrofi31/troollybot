@@ -104,3 +104,8 @@ class Database:
         UPDATE subscriptions SET status='expired' WHERE user_id=?
         """, (user_id,))
         self.db.commit()
+
+    def has_full_access(self, user_id):
+        self.cur.execute("SELECT full_access FROM subscriptions WHERE user_id=?", (user_id,))
+        result = self.cur.fetchone()
+        return bool(result[0]) if result else False
