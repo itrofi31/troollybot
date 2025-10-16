@@ -1,4 +1,6 @@
 import os
+import asyncio
+from datetime import datetime
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import LabeledPrice, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils import executor, exceptions
@@ -7,72 +9,62 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from dotenv import load_dotenv
 
-# Загружаем конфигурацию
+from database import Database  # ← импортируем наш новый класс БД
+
+# ---------- Настройки ----------
 load_dotenv()
 
-# Validate required environment variables
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 PROVIDER_TOKEN = os.getenv("PROVIDER_TOKEN")
-CHANNEL_ID = os.getenv("CHANNEL_ID")
-SUPPORT_USER_ID = os.getenv("SUPPORT_USER_ID")
+CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
+SUPPORT_USER_ID = int(os.getenv("SUPPORT_USER_ID"))
+PRICE = int(os.getenv("PRICE", "30000"))  # 300 руб
 
-if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN environment variable is required")
-if not PROVIDER_TOKEN:
-    raise ValueError("PROVIDER_TOKEN environment variable is required")
-if not CHANNEL_ID:
-    raise ValueError("CHANNEL_ID environment variable is required")
-if not SUPPORT_USER_ID:
-    raise ValueError("SUPPORT_USER_ID environment variable is required")
-
-CHANNEL_ID = int(CHANNEL_ID)
-SUPPORT_USER_ID = int(SUPPORT_USER_ID)
-PRICE = int(os.getenv("PRICE", "30000"))  # цена в копейках
+if not all([BOT_TOKEN, PROVIDER_TOKEN, CHANNEL_ID, SUPPORT_USER_ID]):
+    raise ValueError("❌ Не заданы переменные окружения!")
 
 bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
-# ---------- Меню снизу (ReplyKeyboard) ----------
+# ---------- Инициализация БД ----------
+db = Database()
+
+# ---------- Меню ----------
 main_menu = ReplyKeyboardMarkup(resize_keyboard=True)
-main_menu.add(
-    KeyboardButton("💳 Купить доступ"),
-    KeyboardButton("ℹ️ О канале")
-)
+main_menu.add(KeyboardButton("💳 Купить доступ"), KeyboardButton("ℹ️ О канале"))
 main_menu.add(KeyboardButton("📞 Поддержка"))
 
-# ---------- FSM для поддержки ----------
+buy_inline = InlineKeyboardMarkup().add(
+    InlineKeyboardButton("💳 Оплатить доступ", callback_data="buy")
+)
+
+# ---------- FSM поддержки ----------
 class SupportForm(StatesGroup):
     waiting_for_message = State()
 
-# ---------- Inline-кнопка оплаты ----------
-buy_inline = InlineKeyboardMarkup()
-buy_inline.add(InlineKeyboardButton("💳 Оплатить доступ", callback_data="buy"))
-
-# ---------- Показываем меню при любом сообщении ----------
+# ---------- Команды ----------
 @dp.message_handler()
 async def any_message(message: types.Message):
     if message.text == "💳 Купить доступ":
         await message.answer(
-            "💰 Подписка на канал: 300 ₽ / месяц\nНажми кнопку ниже, чтобы оплатить 👇",
+            f"💰 Подписка: {PRICE/100:.2f} ₽ / месяц\nНажми кнопку ниже, чтобы оплатить 👇",
             reply_markup=buy_inline
         )
     elif message.text == "ℹ️ О канале":
-        await message.answer(
-            "📘 Это закрытый канал с эксклюзивным контентом.\nПосле оплаты ты получишь мгновенный доступ.",
-            reply_markup=main_menu
-        )
+        expiry = db.get_expiry(message.from_user.id)
+        if expiry and expiry > datetime.now():
+            remain = (expiry - datetime.now()).days
+            await message.answer(f"✅ Ваша подписка активна ещё {remain} дней.", reply_markup=main_menu)
+        else:
+            await message.answer("📘 Это закрытый канал. После оплаты вы получите доступ.", reply_markup=main_menu)
     elif message.text == "📞 Поддержка":
-        await message.answer(
-            "📝 Опишите вашу проблему или вопрос. Я перешлю это моему администратору.",
-            reply_markup=None  # скрываем меню, пока пользователь вводит текст
-        )
+        await message.answer("📝 Опишите вашу проблему. Я передам её администратору.")
         await SupportForm.waiting_for_message.set()
     else:
-        # Меню всегда показывается
         await message.answer("Выберите действие из меню 👇", reply_markup=main_menu)
 
-# ---------- Inline-кнопка оплаты ----------
+# ---------- Оплата ----------
 @dp.callback_query_handler(lambda c: c.data == "buy")
 async def process_buy_callback(callback_query: types.CallbackQuery):
     prices = [LabeledPrice(label="Доступ на 1 месяц", amount=PRICE)]
@@ -93,48 +85,59 @@ async def pre_checkout(pre_checkout_query: types.PreCheckoutQuery):
 
 @dp.message_handler(content_types=types.ContentType.SUCCESSFUL_PAYMENT)
 async def successful_payment(message: types.Message):
+    new_expiry = db.add_or_update_subscription(message.from_user.id, message.from_user.username)
+
     invite = await bot.create_chat_invite_link(chat_id=CHANNEL_ID, member_limit=1)
     await message.answer(
-        "✅ Оплата успешно получена!\n\n"
-        f"Вот твоя ссылка для входа в канал:\n{invite.invite_link}",
+        f"✅ Оплата успешно получена!\n"
+        f"Подписка активна до {new_expiry.strftime('%d.%m.%Y')}.\n\n"
+        f"Вот ссылка на канал:\n{invite.invite_link}",
         reply_markup=main_menu
     )
-    
-        # ---------- Приём сообщений от пользователя для поддержки ----------
+
+    # логируем оплату
+    with open("payments.log", "a", encoding="utf-8") as f:
+        f.write(f"[{datetime.now():%Y-%m-%d %H:%M}] {message.from_user.id} @{message.from_user.username} — оплата до {new_expiry}\n")
+
+# ---------- Поддержка ----------
 @dp.message_handler(state=SupportForm.waiting_for_message)
 async def process_support_message(message: types.Message, state: FSMContext):
     try:
-         print(f"Отправка админу: {SUPPORT_USER_ID}")
-         print(f"Текст: {message.text}")
-         await bot.send_message(
+        await bot.send_message(
             SUPPORT_USER_ID,
-            f"Новый запрос от @{message.from_user.username or message.from_user.full_name} (ID {message.from_user.id}):\n\n{message.text}"
+            f"📩 Запрос от @{message.from_user.username or message.from_user.full_name} (ID {message.from_user.id}):\n\n{message.text}"
         )
-         await message.answer(
-            "✅ Ваш запрос отправлен администратору, спасибо!",
-            reply_markup=main_menu
-        )
+        await message.answer("✅ Ваш запрос отправлен администратору.", reply_markup=main_menu)
     except exceptions.BotBlocked:
-        await message.answer(
-            "⚠️ Не удалось отправить запрос администратору."
-        )
+        await message.answer("⚠️ Не удалось отправить запрос администратору.")
     await state.finish()
 
+# ---------- Планировщик подписок ----------
+async def check_subscriptions():
+    while True:
+        for user_id, username, expiry_date, status in db.get_all_subscriptions():
+            expiry = datetime.fromisoformat(expiry_date)
+            days_left = (expiry - datetime.now()).days
 
+            if days_left == 3:
+                try:
+                    await bot.send_message(user_id, "🔔 Ваша подписка заканчивается через 3 дня!")
+                except exceptions.BotBlocked:
+                    pass
+            elif expiry < datetime.now() and status == "active":
+                try:
+                    await bot.send_message(user_id, "🚫 Подписка истекла. Для продления оплатите заново.")
+                    await bot.ban_chat_member(CHANNEL_ID, user_id)
+                    await bot.unban_chat_member(CHANNEL_ID, user_id)
+                except Exception as e:
+                    print(f"⚠️ Ошибка при удалении {user_id}: {e}")
+                db.expire_user(user_id)
+        await asyncio.sleep(3600)  # проверяем каждый час
+
+# ---------- Старт ----------
 async def on_startup(dp):
-    from aiohttp import web
-    
-    async def handle(request):
-        return web.Response(text="Bot is alive!")
-    
-    app = web.Application()
-    app.router.add_get("/", handle)
-    
-    runner = web.AppRunner(app)
-    await runner.setup()
-    site = web.TCPSite(runner, host="0.0.0.0", port=8080)
-    await site.start()
-    print("🌐 Uptime server started on port 8080")
+    asyncio.create_task(check_subscriptions())
+    print("🌐 Планировщик подписок запущен.")
 
 if __name__ == "__main__":
     print("🚀 Бот запущен и работает 24/7")
