@@ -28,7 +28,6 @@ CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 SUPPORT_USER_ID = int(os.getenv("SUPPORT_USER_ID"))
 MONTH_PRICE = int(os.getenv("MONTH_PRICE", "50000"))      # Месячный доступ
 FULL_PRICE = int(os.getenv("FULL_PRICE", "130000"))  # Полный доступ
-INVITE_LINK = os.getenv("INVITE_LINK")
 
 bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
