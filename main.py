@@ -39,12 +39,12 @@ db = Database()
 # ---------- Меню ----------
 main_menu = ReplyKeyboardMarkup(resize_keyboard=True)
 main_menu.add(
+    KeyboardButton("Текущий статус"),
+    KeyboardButton("ℹ️ О клубе"),
+    KeyboardButton("Поддержка"),
     KeyboardButton("💳 Доступ на месяц"),
     KeyboardButton("📚 Полный доступ"),
-    KeyboardButton("ℹ️ О клубе"),
-    KeyboardButton("📊 Текущий статус")
 )
-main_menu.add(KeyboardButton("📞 Поддержка"))
 
 buy_month_inline = InlineKeyboardMarkup().add(
     InlineKeyboardButton("💳 Оплатить месяц", callback_data="buy_month")
@@ -81,28 +81,37 @@ async def any_message(message: types.Message):
             f"💰 Полный доступ: {FULL_PRICE/100:.2f} ₽\nНажми кнопку ниже, чтобы оплатить 👇",
             reply_markup=buy_full_inline
         )
-    elif message.text == "📊 Текущий статус":
+    elif message.text == "Текущий статус":
         expiry = db.get_expiry(message.from_user.id)
         full = db.has_full_access(message.from_user.id)
-        info = "📊 Ваш текущий статус:"
+        info = "📊 Ваш текущий статус подписки:"
         if full:
             info += "\n✅ У вас полный доступ."
         elif expiry and expiry > datetime.now():
             days_left = (expiry - datetime.now()).days
             info += f"\n✅ Ваша подписка активна ещё {days_left} дней."
         else:
-            info += "\n❌ Ваша подписка ещё не активна"
+            info += "\n❌ Ваша подписка ещё не активна. Можете её оплатить по кнопке ниже"
         await message.answer(info, reply_markup=main_menu)
+        await message.answer(
+            f"💰 Доступ в книжный клуб на 30 дней: {MONTH_PRICE/100:.2f} ₽\n",
+            reply_markup=buy_month_inline
+        ) 
+        await message.answer(
+            f"💰 Полный доступ: {FULL_PRICE/100:.2f} ₽\n",
+            reply_markup=buy_full_inline
+        )
+        
     elif message.text == "ℹ️ О клубе":
         info = (
             "📘 Добро пожаловать в книжный клуб! После оплаты вы получите доступ к эксклюзивному контенту.\n"
             "Здесь вы найдёте подборки, обсуждения и многое другое.\n"
             "Доступ на один месяц: 500 руб.\n"
-            "Полный доступ: 1300 руб.\n"
+            "Полный доступ: 1500 руб.\n"
             "Если есть вопросы, нажмите 📞 Поддержка."
         )
         await message.answer(info, reply_markup=main_menu)
-    elif message.text == "📞 Поддержка":
+    elif message.text == "Поддержка":
         await message.answer("📝 Опишите вашу проблему. Я передам её администратору.")
         await SupportForm.waiting_for_message.set()
     else:
@@ -140,7 +149,7 @@ async def process_email(message: types.Message, state: FSMContext):
             "customer": {"email": email},
             "items": [
                 {
-                    "description": label,
+                    "description": label + " в книжный клуб",
                     "quantity": 1,
                     "amount": {"value": amount / 100, "currency": "RUB"},
                     "vat_code": 1,  # ставка НДС 20%
@@ -223,7 +232,8 @@ async def check_subscriptions():
             days_left = (expiry - datetime.now()).days
             if days_left == 3:
                 try:
-                    await bot.send_message(user_id, "🔔 Ваша подписка заканчивается через 3 дня! Чтобы не потерять доступ в клуб, оплатите ещё один месяц, или нажмите кнопку 📞 Поддержка, и мы с вами свяжемся!")
+                    await bot.send_message(user_id, "🔔 Ваша подписка заканчивается через 3 дня! Чтобы не потерять доступ в клуб, оплатите ещё один месяц.")
+										
                 except exceptions.BotBlocked:
                     pass
             elif expiry < datetime.now() and status == "active":
