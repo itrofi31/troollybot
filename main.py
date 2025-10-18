@@ -120,50 +120,15 @@ async def any_message(message: types.Message):
 # ---------- Callback оплаты ----------
 @dp.callback_query_handler(lambda c: c.data in ["buy_month", "buy_full"])
 async def process_buy_callback(callback_query: types.CallbackQuery):
-    # Сохраняем какой тип подписки хочет купить
-    await dp.current_state(user=callback_query.from_user.id).update_data(subscription_type=callback_query.data)
-    
-    await bot.send_message(
-        callback_query.from_user.id,
-        "Пожалуйста, укажите ваш email для получения чека:"
-    )
-    await PaymentForm.waiting_for_email.set()
-    
-@dp.message_handler(state=PaymentForm.waiting_for_email)
-async def process_email(message: types.Message, state: FSMContext):
-    email = message.text.strip()
-    if "@" not in email:  # простая проверка
-        await message.answer("⚠️ Пожалуйста, введите корректный email.")
-        return
-    
-    data = await state.get_data()
-    subscription_type = data.get("subscription_type")
-
-    label = "Полный доступ" if subscription_type == "buy_full" else "Месячный доступ"
-    amount = FULL_PRICE if subscription_type == "buy_full" else MONTH_PRICE
-    prices = [LabeledPrice(label=label, amount=amount)]
-    
-    # Формируем provider_data для фискализации
-    provider_data = {
-        "receipt": {
-            "customer": {"email": email},
-            "items": [
-                {
-                    "description": label + " в книжный клуб",
-                    "quantity": 1,
-                    "amount": {"value": amount / 100, "currency": "RUB"},
-                    "vat_code": 1,  # ставка НДС 20%
-                    "payment_mode": "full_payment",
-                    "payment_subject": "service"
-                }
-            ],
-            "tax_system_code": 1
-        }
-    }
-
     try:
+        subscription_type = callback_query.data
+        label = "Полный доступ" if subscription_type == "buy_full" else "Месячный доступ"
+        amount = FULL_PRICE if subscription_type == "buy_full" else MONTH_PRICE
+
+        prices = [LabeledPrice(label=label, amount=amount)]
+
         await bot.send_invoice(
-            chat_id=message.from_user.id,
+            chat_id=callback_query.from_user.id,
             title=label,
             description=f"{label} в книжный клуб",
             payload=subscription_type,
@@ -171,13 +136,13 @@ async def process_email(message: types.Message, state: FSMContext):
             currency="RUB",
             prices=prices,
             start_parameter=subscription_type,
-            provider_data=provider_data
+            need_email=True,                # попросить e-mail у пользователя
+            send_email_to_provider=True     # отправить его в ЮKassa для чека
         )
+
     except Exception as e:
-        logging.exception(f"Ошибка при отправке счета пользователю {message.from_user.id}: {e}")
-        await message.answer("⚠️ Не удалось создать счет. Попробуйте позже.", reply_markup=main_menu)
-    
-    await state.finish()
+        logging.exception(f"Ошибка при создании счёта для {callback_query.from_user.id}: {e}")
+        await callback_query.answer("⚠️ Не удалось создать счёт. Попробуйте позже.", show_alert=True)
 
 @dp.pre_checkout_query_handler(lambda q: True)
 async def pre_checkout(pre_checkout_query: types.PreCheckoutQuery):
