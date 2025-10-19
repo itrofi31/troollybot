@@ -28,7 +28,7 @@ PROVIDER_TOKEN = os.getenv("PROVIDER_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 SUPPORT_USER_ID = int(os.getenv("SUPPORT_USER_ID"))
 MONTH_PRICE = int(os.getenv("MONTH_PRICE", "50000"))      # Месячный доступ
-FULL_PRICE = int(os.getenv("FULL_PRICE", "130000"))  # Полный доступ
+FULL_PRICE = int(os.getenv("FULL_PRICE", "150000"))  # Полный доступ
 
 bot = Bot(token=BOT_TOKEN)
 storage = MemoryStorage()
@@ -152,7 +152,7 @@ async def successful_payment(message: types.Message):
             message.from_user.id,
             message.from_user.username,
             months=1,
-            full_access=(message.successful_payment.invoice_payload=="subscription_full"),
+            full_access=(message.successful_payment.invoice_payload=="buy_full"),
             amount=message.successful_payment.total_amount,
             currency=message.successful_payment.currency
         )
@@ -168,7 +168,7 @@ async def successful_payment(message: types.Message):
         logging.exception(f"Ошибка при обработке успешной оплаты пользователя {message.from_user.id}: {e}")
         await message.answer("⚠️ Произошла ошибка при регистрации оплаты. Администратор уже уведомлен.")
         
-				# ---------- Поддержка ----------
+# ---------- Поддержка ----------
 @dp.message_handler(state=SupportForm.waiting_for_message)
 async def process_support_message(message: types.Message, state: FSMContext):
     try:
