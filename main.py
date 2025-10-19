@@ -11,11 +11,12 @@ from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from dotenv import load_dotenv
 
 from database import Database  # Работа с БД вынесена в отдельный файл database.py
+from info import about_text
 
 # ---------- Логирование ----------
 logging.basicConfig(
     filename="bot_errors.log",       # файл, куда сохраняем ошибки
-    level=logging.INFO,              # уровень логов
+    level=logging.ERROR,              # уровень логов
     format="%(asctime)s [%(levelname)s] %(message)s"
 )
 
@@ -91,7 +92,7 @@ async def any_message(message: types.Message):
             days_left = (expiry - datetime.now()).days
             info += f"\n✅ Ваша подписка активна ещё {days_left} дней."
         else:
-            info += "\n❌ Ваша подписка ещё не активна. Можете её оплатить по кнопке ниже"
+            info += "\n❌ Подписка не активна😟."
         await message.answer(info, reply_markup=main_menu)
         await message.answer(
             f"💰 Доступ в книжный клуб на 30 дней: {MONTH_PRICE/100:.2f} ₽\n",
@@ -103,14 +104,7 @@ async def any_message(message: types.Message):
         )
         
     elif message.text == "ℹ️ О клубе":
-        info = (
-            "📘 Добро пожаловать в книжный клуб! После оплаты вы получите доступ к эксклюзивному контенту.\n"
-            "Здесь вы найдёте подборки, обсуждения и многое другое.\n"
-            "Доступ на один месяц: 500 руб.\n"
-            "Полный доступ: 1500 руб.\n"
-            "Если есть вопросы, нажмите 📞 Поддержка."
-        )
-        await message.answer(info, reply_markup=main_menu)
+        await message.answer(about_text, reply_markup=main_menu, parse_mode="Markdown")
     elif message.text == "Поддержка":
         await message.answer("📝 Опишите вашу проблему. Я передам её администратору.")
         await SupportForm.waiting_for_message.set()
