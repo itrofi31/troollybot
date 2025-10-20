@@ -3,44 +3,40 @@ from logging.handlers import TimedRotatingFileHandler
 import os
 
 def setup_logger():
+    # Удаляем старые обработчики
+    for handler in logging.root.handlers[:]:
+        logging.root.removeHandler(handler)
+
     # Создаём папку для логов
     if not os.path.exists("logs"):
         os.makedirs("logs")
 
-    # Общий логгер
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+
     logger = logging.getLogger()
     logger.setLevel(logging.INFO)
 
-    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
-
-    # ---------- INFO ----------
-    info_handler = TimedRotatingFileHandler(
-        "logs/info.log", when="midnight", interval=1, backupCount=7, encoding="utf-8"
+    # ---------- Файл с ротацией ----------
+    file_handler = TimedRotatingFileHandler(
+        "logs/bot.log",
+        when="midnight",
+        interval=1,
+        backupCount=14,
+        encoding="utf-8"
     )
-    info_handler.setLevel(logging.INFO)
-    info_handler.setFormatter(formatter)
-    logger.addHandler(info_handler)
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
 
-    # ---------- WARNING ----------
-    warning_handler = TimedRotatingFileHandler(
-        "logs/warning.log", when="midnight", interval=1, backupCount=7, encoding="utf-8"
-    )
-    warning_handler.setLevel(logging.WARNING)
-    warning_handler.setFormatter(formatter)
-    logger.addHandler(warning_handler)
+    # ---------- Консоль ----------
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
 
-    # ---------- ERROR ----------
-    error_handler = TimedRotatingFileHandler(
-        "logs/error.log", when="midnight", interval=1, backupCount=14, encoding="utf-8"
-    )
-    error_handler.setLevel(logging.ERROR)
-    error_handler.setFormatter(formatter)
-    logger.addHandler(error_handler)
-
-    # ---------- Вывод в консоль ----------
-    console = logging.StreamHandler()
-    console.setLevel(logging.INFO)
-    console.setFormatter(formatter)
-    logger.addHandler(console)
+    # ---------- aiogram логгер ----------
+    aiogram_logger = logging.getLogger("aiogram")
+    aiogram_logger.handlers = []
+    aiogram_logger.propagate = True  # будет использовать корневой логгер
 
     return logger
