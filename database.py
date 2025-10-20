@@ -48,7 +48,7 @@ class Database:
                 full_access=1,
                 expiry_date=NULL,
                 status='active',
-								notified_3days = 0
+                notified_3days = 0
             """, (user_id, username))
 
         # ----- Месячная подписка (продлеваем) -----
@@ -115,19 +115,20 @@ class Database:
     def get_all_subscriptions(self):
         self.cur.execute("SELECT user_id, username, expiry_date, full_access, status, notified_3days FROM subscriptions")
         return self.cur.fetchall()
-        
-		# Уведомление за 3 дня (только 1 раз)
+
+    # Уведомление за 3 дня (только 1 раз)
     def mark_notified(self, user_id):
-            self.cur.execute(""" 
-                             UPDATE subscriptions SET notified_3days = 1 WHERE user_id=? 
-                             """, (user_id,))
-            self.db.commit()
+        self.cur.execute(
+            "UPDATE subscriptions SET notified_3days = 1 WHERE user_id=?",
+            (user_id,)
+        )
+        self.db.commit()
 
     # ✅ Пометить пользователя как истёкшего
     def expire_user(self, user_id):
         self.cur.execute("UPDATE subscriptions SET status='expired' WHERE user_id=?", (user_id,))
         self.db.commit()
-        
+
     def get_all_payments_with_users(self):
         self.cur.execute("""
         SELECT 
@@ -144,8 +145,9 @@ class Database:
         ORDER BY payments.payment_date DESC
         """)
         return self.cur.fetchall()
+
     def get_payments(self, offset=0, limit=20):
-         self.cur.execute("""
+        self.cur.execute("""
         SELECT 
             payments.user_id,
             subscriptions.username,
@@ -159,8 +161,29 @@ class Database:
         ON payments.user_id = subscriptions.user_id
         ORDER BY payments.payment_date DESC
         LIMIT ? OFFSET ?
-    """, (limit, offset))
-         return self.cur.fetchall()
+        """, (limit, offset))
+        return self.cur.fetchall()
+
     def count_payments(self):
-         self.cur.execute("SELECT COUNT(*) FROM payments")
-         return self.cur.fetchone()[0]
+        self.cur.execute("SELECT COUNT(*) FROM payments")
+        return self.cur.fetchone()[0]
+
+    def get_all_users(self):
+        self.cur.execute("SELECT user_id, username, expiry_date, full_access FROM subscriptions")
+        return self.cur.fetchall()
+
+    def get_active_users(self):
+        self.cur.execute("SELECT user_id, username, expiry_date, full_access FROM subscriptions WHERE status='active' AND full_access=0")
+        return self.cur.fetchall()
+
+    def get_full_access_users(self):
+        self.cur.execute("SELECT user_id, username, expiry_date, full_access FROM subscriptions WHERE full_access=1")
+        return self.cur.fetchall()
+
+    def get_expired_users(self):
+        self.cur.execute("SELECT user_id, username, expiry_date, full_access FROM subscriptions WHERE status='expired'")
+        return self.cur.fetchall()
+
+    def get_user(self, user_id):
+        self.cur.execute("SELECT user_id, username, expiry_date, full_access FROM subscriptions WHERE user_id=?", (user_id,))
+        return self.cur.fetchone()

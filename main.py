@@ -13,7 +13,6 @@ from dotenv import load_dotenv
 from database import Database  # Работа с БД вынесена в отдельный файл database.py
 from info import about_text
 from admin import register_admin_handlers
-import logging
 from logger_config import setup_logger
 
 # ---------- Логирование ----------

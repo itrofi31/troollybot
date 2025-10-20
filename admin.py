@@ -1,6 +1,6 @@
-# admin.py
 from aiogram import types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from datetime import datetime
 
 PAGE_SIZE = 20
 
@@ -24,7 +24,13 @@ def register_admin_handlers(dp, db, support_user_id, dev_user_id, bot):
         text = f"📊 {title} (страница {page+1}/{pages})\n\n"
         for u in slice_users:
             uid, username, expiry, full_access = u
-            access = "бессрочно (полный)" if full_access else (expiry if expiry else "нет подписки")
+            if full_access:
+                access = "бессрочно (полный)"
+            elif expiry:
+                exp_date = datetime.fromisoformat(expiry).strftime("%d.%m.%Y")
+                access = f"до {exp_date}"
+            else:
+                access = "нет подписки"
             text += f"👤 ID: {uid}\n   @{username}\n   ✅ {access}\n\n"
 
         kb = InlineKeyboardMarkup()
@@ -35,7 +41,7 @@ def register_admin_handlers(dp, db, support_user_id, dev_user_id, bot):
 
         await bot.send_message(chat_id, text, reply_markup=kb)
 
-    # -------------------- Все пользователи --------------------
+    # -------------------- Пользователи по категориям --------------------
     @dp.message_handler(commands=['admin_users'])
     async def admin_users(message: types.Message):
         if not is_admin(message.from_user.id):
@@ -43,7 +49,6 @@ def register_admin_handlers(dp, db, support_user_id, dev_user_id, bot):
         users = db.get_all_users()
         await send_users_page(message.chat.id, 0, users, title="all_users")
 
-    # -------------------- Активные --------------------
     @dp.message_handler(commands=['admin_active'])
     async def admin_active(message: types.Message):
         if not is_admin(message.from_user.id):
@@ -51,7 +56,6 @@ def register_admin_handlers(dp, db, support_user_id, dev_user_id, bot):
         users = db.get_active_users()
         await send_users_page(message.chat.id, 0, users, title="active_users")
 
-    # -------------------- Полные --------------------
     @dp.message_handler(commands=['admin_full'])
     async def admin_full(message: types.Message):
         if not is_admin(message.from_user.id):
@@ -59,7 +63,6 @@ def register_admin_handlers(dp, db, support_user_id, dev_user_id, bot):
         users = db.get_full_access_users()
         await send_users_page(message.chat.id, 0, users, title="full_users")
 
-    # -------------------- Истёкшие --------------------
     @dp.message_handler(commands=['admin_expired'])
     async def admin_expired(message: types.Message):
         if not is_admin(message.from_user.id):
@@ -67,7 +70,7 @@ def register_admin_handlers(dp, db, support_user_id, dev_user_id, bot):
         users = db.get_expired_users()
         await send_users_page(message.chat.id, 0, users, title="expired_users")
 
-    # -------------------- Детальный просмотр --------------------
+    # -------------------- Детальный просмотр пользователя --------------------
     @dp.message_handler(commands=['user'])
     async def admin_user(message: types.Message):
         if not is_admin(message.from_user.id):
@@ -82,7 +85,13 @@ def register_admin_handlers(dp, db, support_user_id, dev_user_id, bot):
             await message.answer("Пользователь не найден.")
             return
         uid, username, expiry, full_access = user
-        access = "бессрочно (полный)" if full_access else (expiry if expiry else "нет подписки")
+        if full_access:
+            access = "бессрочно (полный)"
+        elif expiry:
+            exp_date = datetime.fromisoformat(expiry).strftime("%d.%m.%Y")
+            access = f"до {exp_date}"
+        else:
+            access = "нет подписки"
         await message.answer(
             f"👤 ID: {uid}\n"
             f"@{username}\n"
@@ -102,8 +111,15 @@ def register_admin_handlers(dp, db, support_user_id, dev_user_id, bot):
 
         text = f"📊 История оплат (страница {page+1}/{pages})\n\n"
         for p in slice_payments:
-            uid, username, amount, currency, date, expiry, full = p
-            access = "бессрочно (полный)" if full else f"до {expiry}"
+            uid, username, amount, currency, date_str, expiry, full = p
+            date = datetime.fromisoformat(date_str).strftime("%d.%m.%Y %H:%M")
+            if full:
+                access = "бессрочно (полный)"
+            elif expiry:
+                exp_date = datetime.fromisoformat(expiry).strftime("%d.%m.%Y")
+                access = f"до {exp_date}"
+            else:
+                access = "нет подписки"
             text += (f"👤 ID: {uid}\n"
                      f"   @{username}\n"
                      f"   💳 {amount/100:.2f} {currency}\n"
@@ -122,16 +138,18 @@ def register_admin_handlers(dp, db, support_user_id, dev_user_id, bot):
     async def admin_payments(message: types.Message):
         if not is_admin(message.from_user.id):
             return
-        payments = db.get_payments()
+        payments = db.get_payments(offset=0, limit=1000)  # можно увеличить лимит при необходимости
         await send_payments_page(message.chat.id, 0, payments)
 
     # -------------------- Callback постранично --------------------
-    @dp.callback_query_handler(lambda c: c.data.endswith("_page_0") or "_page_" in c.data)
+    @dp.callback_query_handler(lambda c: "_page_" in c.data)
     async def page_callback(call: types.CallbackQuery):
         if not is_admin(call.from_user.id):
             return
         data = call.data
-        if data.startswith("all_users") or data.startswith("active_users") or data.startswith("full_users") or data.startswith("expired_users"):
+
+        # Пользователи
+        if any(data.startswith(prefix) for prefix in ["all_users", "active_users", "full_users", "expired_users"]):
             title, _, page = data.rpartition("_page_")
             page = int(page)
             if title == "all_users":
@@ -144,8 +162,10 @@ def register_admin_handlers(dp, db, support_user_id, dev_user_id, bot):
                 users = db.get_expired_users()
             await call.message.delete()
             await send_users_page(call.message.chat.id, page, users, title=title)
+
+        # Платежи
         elif data.startswith("payments_page_"):
             page = int(data.split("_")[-1])
-            payments = db.get_payments()
+            payments = db.get_payments(offset=0, limit=1000)
             await call.message.delete()
             await send_payments_page(call.message.chat.id, page, payments)
