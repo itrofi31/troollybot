@@ -134,3 +134,14 @@ class Database:
         ORDER BY payments.payment_date DESC
         """)
         return self.cur.fetchall()
+    def get_payments(self, offset=0, limit=20):
+         with self.connection:
+                return self.cursor.execute("""
+								SELECT user_id, username, amount, currency, date, expiry, full_access
+								FROM payments
+								ORDER BY date DESC
+								LIMIT ? OFFSET ?
+						""", (limit, offset)).fetchall()
+    def count_payments(self):
+    	with self.connection:
+      	  return self.cursor.execute("SELECT COUNT(*) FROM payments").fetchone()[0]

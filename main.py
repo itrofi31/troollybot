@@ -27,7 +27,7 @@ PROVIDER_TOKEN = os.getenv("PROVIDER_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 SUPPORT_USER_ID = int(os.getenv("SUPPORT_USER_ID"))
 DEV_USER_ID = int(os.getenv("DEV_USER_ID"))
-MONTH_PRICE = int(os.getenv("MONTH_PRICE", "50000"))      # Месячный доступ
+MONTH_PRICE = int(os.getenv("MONTH_PRICE", "50000")) # Месячный доступ
 FULL_PRICE = int(os.getenv("FULL_PRICE", "150000"))  # Полный доступ
 
 bot = Bot(token=BOT_TOKEN)
@@ -36,7 +36,7 @@ dp = Dispatcher(bot, storage=storage)
 
 # ---------- Инициализация БД ----------
 db = Database()
-register_admin_handlers(dp,db,SUPPORT_USER_ID,DEV_USER_ID)
+register_admin_handlers(dp,db,SUPPORT_USER_ID,DEV_USER_ID,bot)
 # ---------- Меню ----------
 main_menu = ReplyKeyboardMarkup(resize_keyboard=True)
 main_menu.add(
