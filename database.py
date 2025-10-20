@@ -117,3 +117,20 @@ class Database:
     def expire_user(self, user_id):
         self.cur.execute("UPDATE subscriptions SET status='expired' WHERE user_id=?", (user_id,))
         self.db.commit()
+        
+    def get_all_payments_with_users(self):
+        self.cur.execute("""
+        SELECT 
+            payments.user_id,
+            subscriptions.username,
+            payments.payment_date,
+            payments.amount,
+            payments.currency,
+            payments.expiry_date,
+            payments.full_access
+        FROM payments
+        LEFT JOIN subscriptions
+        ON payments.user_id = subscriptions.user_id
+        ORDER BY payments.payment_date DESC
+        """)
+        return self.cur.fetchall()

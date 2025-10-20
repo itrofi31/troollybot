@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 from database import Database  # Работа с БД вынесена в отдельный файл database.py
 from info import about_text
+from admin import register_admin_handlers
 
 # ---------- Логирование ----------
 logging.basicConfig(
@@ -27,6 +28,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 PROVIDER_TOKEN = os.getenv("PROVIDER_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 SUPPORT_USER_ID = int(os.getenv("SUPPORT_USER_ID"))
+DEV_USER_ID = int(os.getenv("DEV_USER_ID"))
 MONTH_PRICE = int(os.getenv("MONTH_PRICE", "50000"))      # Месячный доступ
 FULL_PRICE = int(os.getenv("FULL_PRICE", "150000"))  # Полный доступ
 
@@ -36,7 +38,7 @@ dp = Dispatcher(bot, storage=storage)
 
 # ---------- Инициализация БД ----------
 db = Database()
-
+register_admin_handlers(dp,db,SUPPORT_USER_ID,DEV_USER_ID)
 # ---------- Меню ----------
 main_menu = ReplyKeyboardMarkup(resize_keyboard=True)
 main_menu.add(
