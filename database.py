@@ -13,7 +13,8 @@ class Database:
             username TEXT,
             expiry_date TEXT,
             full_access INTEGER DEFAULT 0,
-            status TEXT DEFAULT 'active'
+            status TEXT DEFAULT 'active',
+            notified_3days INTEGER DEFAULT 0
         )
         """)
 
@@ -40,13 +41,14 @@ class Database:
         if full_access:
             expiry = None
             self.cur.execute("""
-            INSERT INTO subscriptions (user_id, username, expiry_date, full_access, status)
-            VALUES (?, ?, NULL, 1, 'active')
+            INSERT INTO subscriptions (user_id, username, expiry_date, full_access, status, notified_3days)
+            VALUES (?, ?, NULL, 1, 'active', 0)
             ON CONFLICT(user_id) DO UPDATE SET
                 username=excluded.username,
                 full_access=1,
                 expiry_date=NULL,
-                status='active'
+                status='active',
+								notified_3days = 0
             """, (user_id, username))
 
         # ----- Месячная подписка (продлеваем) -----
@@ -64,13 +66,14 @@ class Database:
                 expiry = now + timedelta(days=30 * months)
 
             self.cur.execute("""
-            INSERT INTO subscriptions (user_id, username, expiry_date, full_access, status)
-            VALUES (?, ?, ?, 0, 'active')
+            INSERT INTO subscriptions (user_id, username, expiry_date, full_access, status, notified_3days)
+            VALUES (?, ?, ?, 0, 'active', 0)
             ON CONFLICT(user_id) DO UPDATE SET
                 username=excluded.username,
                 expiry_date=excluded.expiry_date,
                 full_access=0,
-                status='active'
+                status='active',
+                notified_3days = 0
             """, (user_id, username, expiry.isoformat()))
 
         # ----- Записываем платеж (всегда, не стираем историю) -----
@@ -110,8 +113,15 @@ class Database:
 
     # ✅ Все подписки
     def get_all_subscriptions(self):
-        self.cur.execute("SELECT user_id, username, expiry_date, full_access, status FROM subscriptions")
+        self.cur.execute("SELECT user_id, username, expiry_date, full_access, status, notified_3days FROM subscriptions")
         return self.cur.fetchall()
+        
+		# Уведомление за 3 дня (только 1 раз)
+    def mark_notified(self, user_id):
+            self.cur.execute(""" 
+                             UPDATE subscriptions SET notified_3days = 1 WHERE user_id=? 
+                             """, (user_id,))
+            self.db.commit()
 
     # ✅ Пометить пользователя как истёкшего
     def expire_user(self, user_id):
@@ -135,13 +145,22 @@ class Database:
         """)
         return self.cur.fetchall()
     def get_payments(self, offset=0, limit=20):
-         with self.connection:
-                return self.cursor.execute("""
-								SELECT user_id, username, amount, currency, date, expiry, full_access
-								FROM payments
-								ORDER BY date DESC
-								LIMIT ? OFFSET ?
-						""", (limit, offset)).fetchall()
+         self.cur.execute("""
+        SELECT 
+            payments.user_id,
+            subscriptions.username,
+            payments.amount,
+            payments.currency,
+            payments.payment_date,
+            payments.expiry_date,
+            payments.full_access
+        FROM payments
+        LEFT JOIN subscriptions
+        ON payments.user_id = subscriptions.user_id
+        ORDER BY payments.payment_date DESC
+        LIMIT ? OFFSET ?
+    """, (limit, offset))
+         return self.cur.fetchall()
     def count_payments(self):
-    	with self.connection:
-      	  return self.cursor.execute("SELECT COUNT(*) FROM payments").fetchone()[0]
+         self.cur.execute("SELECT COUNT(*) FROM payments")
+         return self.cur.fetchone()[0]

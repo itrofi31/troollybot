@@ -203,29 +203,30 @@ async def process_support_message(message: types.Message, state: FSMContext):
 # ---------- Планировщик подписок ----------
 async def check_subscriptions():
     while True:
-        for user_id, username, expiry_date, full_access, status in db.get_all_subscriptions():
+        for user_id, username, expiry_date, full_access, status, notified in db.get_all_subscriptions():
             if full_access:
                 continue  # Полный доступ не истекает
             expiry = datetime.fromisoformat(expiry_date)
             days_left = (expiry - datetime.now()).days
-            if days_left == 3:
+            if days_left == 3 and notified == 0:
                 try:
                     await bot.send_message(user_id, "🔔 Ваша подписка заканчивается через 3 дня! Чтобы не потерять доступ в клуб, оплатите ещё один месяц.")
+                    db.mark_notified(user_id)
                     logging.info(f"🔔 Напоминание: у {user_id} осталось 3 дня подписки")
 
                 except exceptions.BotBlocked:
                     pass
             elif expiry < datetime.now() and status == "active":
                 try:
-                    await bot.send_message(user_id, "🚫 Ваш доступ в книжный клуб к сожалению истек.  Вы сможете вернуться, оплатив по кнопке ниже👇.")
                     await bot.ban_chat_member(CHANNEL_ID, user_id)
                     await bot.unban_chat_member(CHANNEL_ID, user_id)
                     logging.info(f"🚫 Подписка истекла у {user_id}. Удаляем из канала.")
+                    await bot.send_message(user_id, "🚫 Ваш доступ в книжный клуб к сожалению истек.  Вы сможете вернуться, оплатив по кнопке ниже👇.")
                 except Exception as e:
                     print(f"⚠️ Ошибка при удалении {user_id}: {e}")
                     logging.error(f"🚫 Подписка истекла у {user_id}. Ошибка удаления из канала.")                    
                 db.expire_user(user_id)
-        await asyncio.sleep(3600)  # Проверяем каждый час
+        await asyncio.sleep(86400)  # Проверяем раз в день
 
 # ---------- Старт ----------
 async def on_startup(dp):
