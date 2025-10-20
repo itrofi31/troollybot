@@ -13,13 +13,11 @@ from dotenv import load_dotenv
 from database import Database  # Работа с БД вынесена в отдельный файл database.py
 from info import about_text
 from admin import register_admin_handlers
+import logging
+from logger_config import setup_logger
 
 # ---------- Логирование ----------
-logging.basicConfig(
-    filename="bot_errors.log",       # файл, куда сохраняем ошибки
-    level=logging.ERROR,              # уровень логов
-    format="%(asctime)s [%(levelname)s] %(message)s"
-)
+setup_logger()
 
 # ---------- Настройки ----------
 load_dotenv()
@@ -65,6 +63,7 @@ class PaymentForm(StatesGroup):
 # ---------- Обработка сообщений ----------
 @dp.message_handler(commands=["start"])
 async def start_command(message: types.Message):
+    logging.info(f"/start от {message.from_user.id} (@{message.from_user.username})")
     await message.answer("👋 Привет! Выберите действие из меню 👇", reply_markup=main_menu)
 
 @dp.message_handler()
@@ -73,18 +72,23 @@ async def any_message(message: types.Message):
         return
     if message.text.startswith("/"):
         return
+    
+    logging.info(f"Сообщение от {message.from_user.id}: {message.text}")
 
     if message.text == "💳 Доступ на месяц":
+        logging.info(f"Пользователь {message.from_user.id} открыл оплату месяца")
         await message.answer(
             f"💰 Доступ в книжный клуб на 30 дней: {MONTH_PRICE/100:.2f} ₽\nНажми кнопку ниже, чтобы оплатить 👇",
             reply_markup=buy_month_inline
         )
     elif message.text == "📚 Полный доступ":
+        logging.info(f"Пользователь {message.from_user.id} открыл оплату полного доступа")
         await message.answer(
             f"💰 Полный доступ: {FULL_PRICE/100:.2f} ₽\nНажми кнопку ниже, чтобы оплатить 👇",
             reply_markup=buy_full_inline
         )
     elif message.text == "Текущий статус":
+        logging.info(f"Пользователь {message.from_user.id} запросил статус подписки")
         expiry = db.get_expiry(message.from_user.id)
         full = db.has_full_access(message.from_user.id)
         info = "📊 Ваш текущий статус подписки:"
@@ -106,8 +110,10 @@ async def any_message(message: types.Message):
         )
         
     elif message.text == "ℹ️ О клубе":
+        logging.info(f"Пользователь {message.from_user.id} открыл информацию о клубе")
         await message.answer(about_text, reply_markup=main_menu, parse_mode="Markdown")
     elif message.text == "Поддержка":
+        logging.info(f"Пользователь {message.from_user.id} пишет в поддержку")
         await message.answer("📝 Опишите вашу проблему. Я передам её администратору.")
         await SupportForm.waiting_for_message.set()
     else:
@@ -122,6 +128,7 @@ async def process_buy_callback(callback_query: types.CallbackQuery):
         amount = FULL_PRICE if subscription_type == "buy_full" else MONTH_PRICE
 
         prices = [LabeledPrice(label=label, amount=amount)]
+        logging.info(f"➡️ Пользователь {callback_query.from_user.id} нажал {callback_query.data}")
 
         await bot.send_invoice(
             chat_id=callback_query.from_user.id,
@@ -137,7 +144,7 @@ async def process_buy_callback(callback_query: types.CallbackQuery):
         )
 
     except Exception as e:
-        logging.exception(f"Ошибка при создании счёта для {callback_query.from_user.id}: {e}")
+        logging.error(f"❌ Ошибка создания счёта для {callback_query.from_user.id}", exc_info=True)
         await callback_query.answer("⚠️ Не удалось создать счёт. Попробуйте позже.", show_alert=True)
 
 @dp.pre_checkout_query_handler(lambda q: True)
@@ -145,7 +152,7 @@ async def pre_checkout(pre_checkout_query: types.PreCheckoutQuery):
     try:
         await bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True)
     except Exception as e:
-        logging.exception(f"Ошибка pre_checkout для {pre_checkout_query.from_user.id}: {e}")
+        logging.error(f"Ошибка pre_checkout для {pre_checkout_query.from_user.id}: {e}")
 
 @dp.message_handler(content_types=types.ContentType.SUCCESSFUL_PAYMENT)
 async def successful_payment(message: types.Message):
@@ -166,9 +173,17 @@ async def successful_payment(message: types.Message):
             f"Вот ссылка на канал:\n{invite.invite_link}",
             reply_markup=main_menu
         )
+        pay = message.successful_payment
+        logging.info(
+            f"✅ УСПЕШНАЯ ОПЛАТА | User {message.from_user.id} | "
+            f"{pay.total_amount/100} {pay.currency} | Тип: {pay.invoice_payload}"
+        )
     except Exception as e:
-        logging.exception(f"Ошибка при обработке успешной оплаты пользователя {message.from_user.id}: {e}")
-        await message.answer("⚠️ Произошла ошибка при регистрации оплаты. Администратор уже уведомлен.")
+					logging.error(
+											f"❌ Ошибка при обработке успешной оплаты {message.from_user.id}",
+											exc_info=True
+									)
+					await message.answer("⚠️ Произошла ошибка при регистрации оплаты. Администратор уже уведомлен.")
         
 # ---------- Поддержка ----------
 @dp.message_handler(state=SupportForm.waiting_for_message)
@@ -179,8 +194,10 @@ async def process_support_message(message: types.Message, state: FSMContext):
             f"📩 Запрос от @{message.from_user.username or message.from_user.full_name} (ID {message.from_user.id}):\n\n{message.text}"
         )
         await message.answer("✅ Ваш запрос отправлен администратору.", reply_markup=main_menu)
+        logging.info(f"📩 Сообщение в поддержку от {message.from_user.id}: {message.text}")
     except exceptions.BotBlocked:
         await message.answer("⚠️ Не удалось отправить запрос администратору.")
+        logging.error(f"❌ Сообщение в поддержку не отправлено!!! от {message.from_user.id}: {message.text}")
     await state.finish()
 
 # ---------- Планировщик подписок ----------
@@ -194,7 +211,8 @@ async def check_subscriptions():
             if days_left == 3:
                 try:
                     await bot.send_message(user_id, "🔔 Ваша подписка заканчивается через 3 дня! Чтобы не потерять доступ в клуб, оплатите ещё один месяц.")
-										
+                    logging.info(f"🔔 Напоминание: у {user_id} осталось 3 дня подписки")
+
                 except exceptions.BotBlocked:
                     pass
             elif expiry < datetime.now() and status == "active":
@@ -202,16 +220,18 @@ async def check_subscriptions():
                     await bot.send_message(user_id, "🚫 Ваш доступ в книжный клуб к сожалению истек.  Вы сможете вернуться, оплатив по кнопке ниже👇.")
                     await bot.ban_chat_member(CHANNEL_ID, user_id)
                     await bot.unban_chat_member(CHANNEL_ID, user_id)
+                    logging.info(f"🚫 Подписка истекла у {user_id}. Удаляем из канала.")
                 except Exception as e:
                     print(f"⚠️ Ошибка при удалении {user_id}: {e}")
+                    logging.error(f"🚫 Подписка истекла у {user_id}. Ошибка удаления из канала.")                    
                 db.expire_user(user_id)
         await asyncio.sleep(3600)  # Проверяем каждый час
 
 # ---------- Старт ----------
 async def on_startup(dp):
     asyncio.create_task(check_subscriptions())
-    print("🌐 Планировщик подписок запущен.")
+    logging.info("🌐 Планировщик подписок запущен.")
 
 if __name__ == "__main__":
-    print("🚀 Бот запущен и работает 24/7")
+    logging.info("🚀 Бот запущен и работает 24/7")
     executor.start_polling(dp, skip_updates=True, on_startup=on_startup)
