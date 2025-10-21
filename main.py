@@ -124,7 +124,6 @@ async def any_message(message: types.Message):
             logging.info(
                 f"Пользователь {user_info(message.from_user)} запросил статус подписки"
             )
-
             expiry = db.get_expiry(message.from_user.id)
             full = db.has_full_access(message.from_user.id)
 
@@ -132,21 +131,24 @@ async def any_message(message: types.Message):
 
             if full:
                 info += "\n✅ У вас полный доступ."
+                await message.answer(info, reply_markup=main_menu)
+
             elif expiry and expiry > datetime.now():
                 days_left = (expiry - datetime.now()).days
                 info += f"\n✅ Ваша подписка активна ещё {days_left} дней."
+                await message.answer(info, reply_markup=main_menu)
+
             else:
                 info += "\n❌ Подписка не активна😟."
-                await message.answer(
-                    f"💰 Доступ в книжный клуб на 30 дней: {MONTH_PRICE/100:.2f} ₽\n",
-                    reply_markup=buy_month_inline,
-                )
-                await message.answer(
-                    f"💰 Полный доступ: {FULL_PRICE/100:.2f} ₽\n",
-                    reply_markup=buy_full_inline,
-                )
+                await message.answer(info, reply_markup=main_menu)
 
-            await message.answer(info, reply_markup=main_menu)
+                # И только теперь — предложения оплатить
+                await message.answer(
+                    f"💳 Хочешь продлить? 👇", reply_markup=buy_month_inline
+                )
+                await message.answer(
+                    f"📚 Или полный доступ: 👇", reply_markup=buy_full_inline
+                )
 
         elif message.text == "ℹ️ О клубе":
             logging.info(
