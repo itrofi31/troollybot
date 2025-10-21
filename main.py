@@ -3,7 +3,13 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import LabeledPrice, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import (
+    LabeledPrice,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+)
 from aiogram.utils import executor, exceptions
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
@@ -26,7 +32,7 @@ PROVIDER_TOKEN = os.getenv("PROVIDER_TOKEN")
 CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
 SUPPORT_USER_ID = int(os.getenv("SUPPORT_USER_ID"))
 DEV_USER_ID = int(os.getenv("DEV_USER_ID"))
-MONTH_PRICE = int(os.getenv("MONTH_PRICE", "50000")) # Месячный доступ
+MONTH_PRICE = int(os.getenv("MONTH_PRICE", "50000"))  # Месячный доступ
 FULL_PRICE = int(os.getenv("FULL_PRICE", "150000"))  # Полный доступ
 
 bot = Bot(token=BOT_TOKEN)
@@ -35,7 +41,7 @@ dp = Dispatcher(bot, storage=storage)
 
 # ---------- Инициализация БД ----------
 db = Database()
-register_admin_handlers(dp,db,SUPPORT_USER_ID,DEV_USER_ID,bot)
+register_admin_handlers(dp, db, SUPPORT_USER_ID, DEV_USER_ID, bot)
 # ---------- Меню ----------
 main_menu = ReplyKeyboardMarkup(resize_keyboard=True)
 main_menu.add(
@@ -53,17 +59,24 @@ buy_full_inline = InlineKeyboardMarkup().add(
     InlineKeyboardButton("💳 Оплатить полный доступ", callback_data="buy_full")
 )
 
+
 # ---------- FSM поддержки ----------
 class SupportForm(StatesGroup):
     waiting_for_message = State()
+
+
 class PaymentForm(StatesGroup):
     waiting_for_email = State()
+
 
 # ---------- Обработка сообщений ----------
 @dp.message_handler(commands=["start"])
 async def start_command(message: types.Message):
     logging.info(f"/start от {message.from_user.id} (@{message.from_user.username})")
-    await message.answer("👋 Привет! Выберите действие из меню 👇", reply_markup=main_menu)
+    await message.answer(
+        "👋 Привет! Выберите действие из меню 👇", reply_markup=main_menu
+    )
+
 
 @dp.message_handler()
 async def any_message(message: types.Message):
@@ -71,20 +84,22 @@ async def any_message(message: types.Message):
         return
     if message.text.startswith("/"):
         return
-    
+
     logging.info(f"Сообщение от {message.from_user.id}: {message.text}")
 
     if message.text == "💳 Доступ на месяц":
         logging.info(f"Пользователь {message.from_user.id} открыл оплату месяца")
         await message.answer(
             f"💰 Доступ в книжный клуб на 30 дней: {MONTH_PRICE/100:.2f} ₽\nНажми кнопку ниже, чтобы оплатить 👇",
-            reply_markup=buy_month_inline
+            reply_markup=buy_month_inline,
         )
     elif message.text == "📚 Полный доступ":
-        logging.info(f"Пользователь {message.from_user.id} открыл оплату полного доступа")
+        logging.info(
+            f"Пользователь {message.from_user.id} открыл оплату полного доступа"
+        )
         await message.answer(
             f"💰 Полный доступ: {FULL_PRICE/100:.2f} ₽\nНажми кнопку ниже, чтобы оплатить 👇",
-            reply_markup=buy_full_inline
+            reply_markup=buy_full_inline,
         )
     elif message.text == "Текущий статус":
         logging.info(f"Пользователь {message.from_user.id} запросил статус подписки")
@@ -99,15 +114,15 @@ async def any_message(message: types.Message):
         else:
             info += "\n❌ Подписка не активна😟."
             await message.answer(
-            		f"💰 Доступ в книжный клуб на 30 дней: {MONTH_PRICE/100:.2f} ₽\n",
-            		reply_markup=buy_month_inline
-                                        ) 
+                f"💰 Доступ в книжный клуб на 30 дней: {MONTH_PRICE/100:.2f} ₽\n",
+                reply_markup=buy_month_inline,
+            )
             await message.answer(
-            		f"💰 Полный доступ: {FULL_PRICE/100:.2f} ₽\n",
-            		reply_markup=buy_full_inline
-                                        )
+                f"💰 Полный доступ: {FULL_PRICE/100:.2f} ₽\n",
+                reply_markup=buy_full_inline,
+            )
         await message.answer(info, reply_markup=main_menu)
-        
+
     elif message.text == "ℹ️ О клубе":
         logging.info(f"Пользователь {message.from_user.id} открыл информацию о клубе")
         await message.answer(about_text, reply_markup=main_menu, parse_mode="Markdown")
@@ -118,16 +133,21 @@ async def any_message(message: types.Message):
     else:
         await message.answer("Выберите действие из меню 👇", reply_markup=main_menu)
 
+
 # ---------- Callback оплаты ----------
 @dp.callback_query_handler(lambda c: c.data in ["buy_month", "buy_full"])
 async def process_buy_callback(callback_query: types.CallbackQuery):
     try:
         subscription_type = callback_query.data
-        label = "Полный доступ" if subscription_type == "buy_full" else "Месячный доступ"
+        label = (
+            "Полный доступ" if subscription_type == "buy_full" else "Месячный доступ"
+        )
         amount = FULL_PRICE if subscription_type == "buy_full" else MONTH_PRICE
 
         prices = [LabeledPrice(label=label, amount=amount)]
-        logging.info(f"➡️ Пользователь {callback_query.from_user.id} нажал {callback_query.data}")
+        logging.info(
+            f"➡️ Пользователь {callback_query.from_user.id} нажал {callback_query.data}"
+        )
 
         await bot.send_invoice(
             chat_id=callback_query.from_user.id,
@@ -138,13 +158,18 @@ async def process_buy_callback(callback_query: types.CallbackQuery):
             currency="RUB",
             prices=prices,
             start_parameter=subscription_type,
-            need_email=True,                # попросить e-mail у пользователя
-            send_email_to_provider=True     # отправить его в ЮKassa для чека
+            need_email=True,  # попросить e-mail у пользователя
+            send_email_to_provider=True,  # отправить его в ЮKassa для чека
         )
 
     except Exception as e:
-        logging.error(f"❌ Ошибка создания счёта для {callback_query.from_user.id}", exc_info=True)
-        await callback_query.answer("⚠️ Не удалось создать счёт. Попробуйте позже.", show_alert=True)
+        logging.error(
+            f"❌ Ошибка создания счёта для {callback_query.from_user.id}", exc_info=True
+        )
+        await callback_query.answer(
+            "⚠️ Не удалось создать счёт. Попробуйте позже.", show_alert=True
+        )
+
 
 @dp.pre_checkout_query_handler(lambda q: True)
 async def pre_checkout(pre_checkout_query: types.PreCheckoutQuery):
@@ -153,6 +178,7 @@ async def pre_checkout(pre_checkout_query: types.PreCheckoutQuery):
     except Exception as e:
         logging.error(f"Ошибка pre_checkout для {pre_checkout_query.from_user.id}: {e}")
 
+
 @dp.message_handler(content_types=types.ContentType.SUCCESSFUL_PAYMENT)
 async def successful_payment(message: types.Message):
     try:
@@ -160,9 +186,9 @@ async def successful_payment(message: types.Message):
             message.from_user.id,
             message.from_user.username,
             months=1,
-            full_access=(message.successful_payment.invoice_payload=="buy_full"),
+            full_access=(message.successful_payment.invoice_payload == "buy_full"),
             amount=message.successful_payment.total_amount,
-            currency=message.successful_payment.currency
+            currency=message.successful_payment.currency,
         )
 
         invite = await bot.create_chat_invite_link(chat_id=CHANNEL_ID, member_limit=1)
@@ -170,7 +196,7 @@ async def successful_payment(message: types.Message):
             f"✅ Оплата успешно получена!\n"
             f"Подписка активна до {new_expiry.strftime('%d.%m.%Y') if new_expiry else 'бессрочно'}.\n\n"
             f"Вот ссылка на канал:\n{invite.invite_link}",
-            reply_markup=main_menu
+            reply_markup=main_menu,
         )
         pay = message.successful_payment
         logging.info(
@@ -178,38 +204,58 @@ async def successful_payment(message: types.Message):
             f"{pay.total_amount/100} {pay.currency} | Тип: {pay.invoice_payload}"
         )
     except Exception as e:
-					logging.error(
-											f"❌ Ошибка при обработке успешной оплаты {message.from_user.id}",
-											exc_info=True
-									)
-					await message.answer("⚠️ Произошла ошибка при регистрации оплаты. Администратор уже уведомлен.")
-        
+        logging.error(
+            f"❌ Ошибка при обработке успешной оплаты {message.from_user.id}",
+            exc_info=True,
+        )
+        await message.answer(
+            "⚠️ Произошла ошибка при регистрации оплаты. Администратор уже уведомлен."
+        )
+
+
 # ---------- Поддержка ----------
 @dp.message_handler(state=SupportForm.waiting_for_message)
 async def process_support_message(message: types.Message, state: FSMContext):
     try:
         await bot.send_message(
             SUPPORT_USER_ID,
-            f"📩 Запрос от @{message.from_user.username or message.from_user.full_name} (ID {message.from_user.id}):\n\n{message.text}"
+            f"📩 Запрос от @{message.from_user.username or message.from_user.full_name} (ID {message.from_user.id}):\n\n{message.text}",
         )
-        await message.answer("✅ Ваш запрос отправлен администратору.", reply_markup=main_menu)
-        logging.info(f"📩 Сообщение в поддержку от {message.from_user.id}: {message.text}")
+        await message.answer(
+            "✅ Ваш запрос отправлен администратору.", reply_markup=main_menu
+        )
+        logging.info(
+            f"📩 Сообщение в поддержку от {message.from_user.id}: {message.text}"
+        )
     except exceptions.BotBlocked:
         await message.answer("⚠️ Не удалось отправить запрос администратору.")
-        logging.error(f"❌ Сообщение в поддержку не отправлено!!! от {message.from_user.id}: {message.text}")
+        logging.error(
+            f"❌ Сообщение в поддержку не отправлено!!! от {message.from_user.id}: {message.text}"
+        )
     await state.finish()
+
 
 # ---------- Планировщик подписок ----------
 async def check_subscriptions():
     while True:
-        for user_id, username, expiry_date, full_access, status, notified in db.get_all_subscriptions():
+        for (
+            user_id,
+            username,
+            expiry_date,
+            full_access,
+            status,
+            notified,
+        ) in db.get_all_subscriptions():
             if full_access:
                 continue  # Полный доступ не истекает
             expiry = datetime.fromisoformat(expiry_date)
             days_left = (expiry - datetime.now()).days
             if days_left == 3 and notified == 0:
                 try:
-                    await bot.send_message(user_id, "🔔 Ваша подписка заканчивается через 3 дня! Чтобы не потерять доступ в клуб, оплатите ещё один месяц.")
+                    await bot.send_message(
+                        user_id,
+                        "🔔 Ваша подписка заканчивается через 3 дня! Чтобы не потерять доступ в клуб, оплатите ещё один месяц.",
+                    )
                     db.mark_notified(user_id)
                     logging.info(f"🔔 Напоминание: у {user_id} осталось 3 дня подписки")
 
@@ -220,17 +266,24 @@ async def check_subscriptions():
                     await bot.ban_chat_member(CHANNEL_ID, user_id)
                     await bot.unban_chat_member(CHANNEL_ID, user_id)
                     logging.info(f"🚫 Подписка истекла у {user_id}. Удаляем из канала.")
-                    await bot.send_message(user_id, "🚫 Ваш доступ в книжный клуб к сожалению истек.  Вы сможете вернуться, оплатив по кнопке ниже👇.")
+                    await bot.send_message(
+                        user_id,
+                        "🚫 Ваш доступ в книжный клуб к сожалению истек.  Вы сможете вернуться, оплатив по кнопке ниже👇.",
+                    )
                 except Exception as e:
                     print(f"⚠️ Ошибка при удалении {user_id}: {e}")
-                    logging.error(f"🚫 Подписка истекла у {user_id}. Ошибка удаления из канала.")                    
+                    logging.error(
+                        f"🚫 Подписка истекла у {user_id}. Ошибка удаления из канала."
+                    )
                 db.expire_user(user_id)
         await asyncio.sleep(86400)  # Проверяем раз в день
+
 
 # ---------- Старт ----------
 async def on_startup(dp):
     asyncio.create_task(check_subscriptions())
     logging.info("🌐 Планировщик подписок запущен.")
+
 
 if __name__ == "__main__":
     logging.info("🚀 Бот запущен и работает 24/7")

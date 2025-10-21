@@ -2,6 +2,7 @@ import logging
 from logging.handlers import TimedRotatingFileHandler
 import os
 
+
 def setup_logger():
     # Удаляем старые обработчики
     for handler in logging.root.handlers[:]:
@@ -18,11 +19,7 @@ def setup_logger():
 
     # ---------- Файл с ротацией ----------
     file_handler = TimedRotatingFileHandler(
-        "logs/bot.log",
-        when="midnight",
-        interval=1,
-        backupCount=14,
-        encoding="utf-8"
+        "logs/bot.log", when="midnight", interval=1, backupCount=14, encoding="utf-8"
     )
     file_handler.setLevel(logging.INFO)
     file_handler.setFormatter(formatter)

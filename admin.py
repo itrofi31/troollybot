@@ -4,6 +4,7 @@ from datetime import datetime
 
 PAGE_SIZE = 20
 
+
 def register_admin_handlers(dp, db, support_user_id, dev_user_id, bot):
     """Регистрация всех админ-хэндлеров"""
 
@@ -15,7 +16,7 @@ def register_admin_handlers(dp, db, support_user_id, dev_user_id, bot):
         total = len(users)
         pages = (total - 1) // PAGE_SIZE + 1
         offset = page * PAGE_SIZE
-        slice_users = users[offset:offset+PAGE_SIZE]
+        slice_users = users[offset : offset + PAGE_SIZE]
 
         if not slice_users:
             await bot.send_message(chat_id, "Нет пользователей.")
@@ -35,35 +36,39 @@ def register_admin_handlers(dp, db, support_user_id, dev_user_id, bot):
 
         kb = InlineKeyboardMarkup()
         if page > 0:
-            kb.add(InlineKeyboardButton("⬅ Назад", callback_data=f"{title}_page_{page-1}"))
+            kb.add(
+                InlineKeyboardButton("⬅ Назад", callback_data=f"{title}_page_{page-1}")
+            )
         if page < pages - 1:
-            kb.add(InlineKeyboardButton("Вперёд ➡", callback_data=f"{title}_page_{page+1}"))
+            kb.add(
+                InlineKeyboardButton("Вперёд ➡", callback_data=f"{title}_page_{page+1}")
+            )
 
         await bot.send_message(chat_id, text, reply_markup=kb)
 
     # -------------------- Пользователи по категориям --------------------
-    @dp.message_handler(commands=['admin_users'])
+    @dp.message_handler(commands=["admin_users"])
     async def admin_users(message: types.Message):
         if not is_admin(message.from_user.id):
             return
         users = db.get_all_users()
         await send_users_page(message.chat.id, 0, users, title="all_users")
 
-    @dp.message_handler(commands=['admin_active'])
+    @dp.message_handler(commands=["admin_active"])
     async def admin_active(message: types.Message):
         if not is_admin(message.from_user.id):
             return
         users = db.get_active_users()
         await send_users_page(message.chat.id, 0, users, title="active_users")
 
-    @dp.message_handler(commands=['admin_full'])
+    @dp.message_handler(commands=["admin_full"])
     async def admin_full(message: types.Message):
         if not is_admin(message.from_user.id):
             return
         users = db.get_full_access_users()
         await send_users_page(message.chat.id, 0, users, title="full_users")
 
-    @dp.message_handler(commands=['admin_expired'])
+    @dp.message_handler(commands=["admin_expired"])
     async def admin_expired(message: types.Message):
         if not is_admin(message.from_user.id):
             return
@@ -71,7 +76,7 @@ def register_admin_handlers(dp, db, support_user_id, dev_user_id, bot):
         await send_users_page(message.chat.id, 0, users, title="expired_users")
 
     # -------------------- Детальный просмотр пользователя --------------------
-    @dp.message_handler(commands=['user'])
+    @dp.message_handler(commands=["user"])
     async def admin_user(message: types.Message):
         if not is_admin(message.from_user.id):
             return
@@ -92,18 +97,14 @@ def register_admin_handlers(dp, db, support_user_id, dev_user_id, bot):
             access = f"до {exp_date}"
         else:
             access = "нет подписки"
-        await message.answer(
-            f"👤 ID: {uid}\n"
-            f"@{username}\n"
-            f"✅ Статус: {access}"
-        )
+        await message.answer(f"👤 ID: {uid}\n" f"@{username}\n" f"✅ Статус: {access}")
 
     # -------------------- История оплат --------------------
     async def send_payments_page(chat_id, page, payments):
         total = len(payments)
         pages = (total - 1) // PAGE_SIZE + 1
         offset = page * PAGE_SIZE
-        slice_payments = payments[offset:offset+PAGE_SIZE]
+        slice_payments = payments[offset : offset + PAGE_SIZE]
 
         if not slice_payments:
             await bot.send_message(chat_id, "Нет оплат.")
@@ -120,25 +121,35 @@ def register_admin_handlers(dp, db, support_user_id, dev_user_id, bot):
                 access = f"до {exp_date}"
             else:
                 access = "нет подписки"
-            text += (f"👤 ID: {uid}\n"
-                     f"   @{username}\n"
-                     f"   💳 {amount/100:.2f} {currency}\n"
-                     f"   ⏰ {date}\n"
-                     f"   ✅ {access}\n\n")
+            text += (
+                f"👤 ID: {uid}\n"
+                f"   @{username}\n"
+                f"   💳 {amount/100:.2f} {currency}\n"
+                f"   ⏰ {date}\n"
+                f"   ✅ {access}\n\n"
+            )
 
         kb = InlineKeyboardMarkup()
         if page > 0:
-            kb.add(InlineKeyboardButton("⬅ Назад", callback_data=f"payments_page_{page-1}"))
+            kb.add(
+                InlineKeyboardButton("⬅ Назад", callback_data=f"payments_page_{page-1}")
+            )
         if page < pages - 1:
-            kb.add(InlineKeyboardButton("Вперёд ➡", callback_data=f"payments_page_{page+1}"))
+            kb.add(
+                InlineKeyboardButton(
+                    "Вперёд ➡", callback_data=f"payments_page_{page+1}"
+                )
+            )
 
         await bot.send_message(chat_id, text, reply_markup=kb)
 
-    @dp.message_handler(commands=['admin_payments'])
+    @dp.message_handler(commands=["admin_payments"])
     async def admin_payments(message: types.Message):
         if not is_admin(message.from_user.id):
             return
-        payments = db.get_payments(offset=0, limit=1000)  # можно увеличить лимит при необходимости
+        payments = db.get_payments(
+            offset=0, limit=1000
+        )  # можно увеличить лимит при необходимости
         await send_payments_page(message.chat.id, 0, payments)
 
     # -------------------- Callback постранично --------------------
@@ -149,7 +160,10 @@ def register_admin_handlers(dp, db, support_user_id, dev_user_id, bot):
         data = call.data
 
         # Пользователи
-        if any(data.startswith(prefix) for prefix in ["all_users", "active_users", "full_users", "expired_users"]):
+        if any(
+            data.startswith(prefix)
+            for prefix in ["all_users", "active_users", "full_users", "expired_users"]
+        ):
             title, _, page = data.rpartition("_page_")
             page = int(page)
             if title == "all_users":
