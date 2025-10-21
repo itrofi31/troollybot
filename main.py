@@ -73,19 +73,21 @@ class PaymentForm(StatesGroup):
     waiting_for_email = State()
 
 
+def user_info(user: types.User):
+    return f"{user.id} (@{user.username or user.full_name})"
+
+
 # ---------- Обработка сообщений ----------
 @dp.message_handler(commands=["start"])
 async def start_command(message: types.Message):
     try:
-        logging.info(
-            f"/start от {message.from_user.id} (@{message.from_user.username})"
-        )
+        logging.info(f"/start от {user_info(message.from_user)}")
         await message.answer(
             "👋 Привет! Выберите действие из меню 👇", reply_markup=main_menu
         )
     except Exception as e:
         logging.error(
-            f"❌ Ошибка в /start для {message.from_user.id}: {e}", exc_info=True
+            f"❌ Ошибка в /start для {user_info(message.from_user)}: {e}", exc_info=True
         )
 
 
@@ -98,10 +100,12 @@ async def any_message(message: types.Message):
         if message.text.startswith("/"):
             return
 
-        logging.info(f"Сообщение от {message.from_user.id}: {message.text}")
+        logging.info(f"Сообщение от {user_info(message.from_user)}: {message.text}")
 
         if message.text == "💳 Доступ на месяц":
-            logging.info(f"Пользователь {message.from_user.id} открыл оплату месяца")
+            logging.info(
+                f"Пользователь {user_info(message.from_user)} открыл оплату месяца"
+            )
             await message.answer(
                 f"💰 Доступ в книжный клуб на 30 дней: {MONTH_PRICE/100:.2f} ₽\nНажми кнопку ниже, чтобы оплатить 👇",
                 reply_markup=buy_month_inline,
@@ -109,7 +113,7 @@ async def any_message(message: types.Message):
 
         elif message.text == "📚 Полный доступ":
             logging.info(
-                f"Пользователь {message.from_user.id} открыл оплату полного доступа"
+                f"Пользователь {user_info(message.from_user)} открыл оплату полного доступа"
             )
             await message.answer(
                 f"💰 Полный доступ: {FULL_PRICE/100:.2f} ₽\nНажми кнопку ниже, чтобы оплатить 👇",
@@ -118,7 +122,7 @@ async def any_message(message: types.Message):
 
         elif message.text == "Текущий статус":
             logging.info(
-                f"Пользователь {message.from_user.id} запросил статус подписки"
+                f"Пользователь {user_info(message.from_user)} запросил статус подписки"
             )
 
             expiry = db.get_expiry(message.from_user.id)
@@ -146,14 +150,16 @@ async def any_message(message: types.Message):
 
         elif message.text == "ℹ️ О клубе":
             logging.info(
-                f"Пользователь {message.from_user.id} открыл информацию о клубе"
+                f"Пользователь {user_info(message.from_user)} открыл информацию о клубе"
             )
             await message.answer(
                 about_text, reply_markup=main_menu, parse_mode="Markdown"
             )
 
         elif message.text == "Поддержка":
-            logging.info(f"Пользователь {message.from_user.id} пишет в поддержку")
+            logging.info(
+                f"Пользователь {user_info(message.from_user)} пишет в поддержку"
+            )
             await message.answer(
                 "📝 Опишите вашу проблему. Я передам её администратору."
             )
@@ -164,7 +170,7 @@ async def any_message(message: types.Message):
 
     except Exception as e:
         logging.error(
-            f"❌ Ошибка обработки сообщения от {message.from_user.id}: {e}",
+            f"❌ Ошибка обработки сообщения от {user_info(message.from_user)}: {e}",
             exc_info=True,
         )
         await message.answer(
@@ -184,7 +190,7 @@ async def process_buy_callback(callback_query: types.CallbackQuery):
         prices = [LabeledPrice(label=label, amount=amount)]
 
         logging.info(
-            f"➡️ Пользователь {callback_query.from_user.id} нажал {callback_query.data}"
+            f"➡️ Пользователь {callback_query.from_user.id} {callback_query.from_user}: нажал {callback_query.data}"
         )
 
         await bot.send_invoice(
@@ -244,12 +250,12 @@ async def successful_payment(message: types.Message):
 
         pay = message.successful_payment
         logging.info(
-            f"✅ УСПЕШНАЯ ОПЛАТА | User {message.from_user.id} | "
+            f"✅ УСПЕШНАЯ ОПЛАТА | User {user_info(message.from_user)} | "
             f"{pay.total_amount/100} {pay.currency} | Тип: {pay.invoice_payload}"
         )
     except Exception as e:
         logging.error(
-            f"❌ Ошибка при обработке успешной оплаты {message.from_user.id}",
+            f"❌ Ошибка при обработке успешной оплаты {user_info(message.from_user)}",
             exc_info=True,
         )
         await message.answer(
@@ -263,22 +269,22 @@ async def process_support_message(message: types.Message, state: FSMContext):
     try:
         await bot.send_message(
             SUPPORT_USER_ID,
-            f"📩 Запрос от @{message.from_user.username or message.from_user.full_name} (ID {message.from_user.id}):\n\n{message.text}",
+            f"📩 Запрос от {user_info(message.from_user)}:\n\n{message.text}",
         )
         await message.answer(
             "✅ Ваш запрос отправлен администратору.", reply_markup=main_menu
         )
         logging.info(
-            f"📩 Сообщение в поддержку от {message.from_user.id}: {message.text}"
+            f"📩 Сообщение в поддержку от {user_info(message.from_user)}: {message.text}"
         )
     except exceptions.BotBlocked:
         await message.answer("⚠️ Не удалось отправить запрос администратору.")
         logging.error(
-            f"❌ Сообщение в поддержку не отправлено!!! от {message.from_user.id}: {message.text}"
+            f"❌ Сообщение в поддержку не отправлено!!! от {user_info(message.from_user)}: {message.text}"
         )
     except Exception as e:
         logging.error(
-            f"❌ Ошибка отправки в поддержку от {message.from_user.id}: {e}",
+            f"❌ Ошибка отправки в поддержку от {user_info(message.from_user)}: {e}",
             exc_info=True,
         )
         await message.answer("⚠️ Произошла ошибка. Попробуйте позже.")
