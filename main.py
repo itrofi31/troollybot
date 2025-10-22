@@ -328,7 +328,7 @@ async def check_subscriptions():
                         expiry = datetime.fromisoformat(expiry_date)
                     except (ValueError, TypeError) as e:
                         logging.error(
-                            f"❌ Некорректная дата для {user_id}: {expiry_date}"
+                            f"❌ Некорректная дата для {user_id} ({username}): {expiry_date}"
                         )
                         continue
 
@@ -343,15 +343,15 @@ async def check_subscriptions():
                             )
                             db.mark_notified(user_id)
                             logging.info(
-                                f"🔔 Напоминание: у {user_id} осталось {days_left} дней подписки"
+                                f"🔔 Напоминание: у {user_id} ({username}) осталось {days_left} дней подписки"
                             )
                         except exceptions.BotBlocked:
                             logging.warning(
-                                f"⚠️ Бот заблокирован пользователем {user_id}"
+                                f"⚠️ Бот заблокирован пользователем {user_id} ({username})"
                             )
                         except Exception as e:
                             logging.error(
-                                f"❌ Ошибка отправки уведомления {user_id}: {e}"
+                                f"❌ Ошибка отправки уведомления {user_id} ({username}): {e}"
                             )
 
                     # Подписка истекла
@@ -360,7 +360,7 @@ async def check_subscriptions():
                             await bot.ban_chat_member(CHANNEL_ID, user_id)
                             await bot.unban_chat_member(CHANNEL_ID, user_id)
                             logging.info(
-                                f"🚫 Подписка истекла у {user_id}. Удаляем из канала."
+                                f"🚫 Подписка истекла у {user_id} ({username}). Удаляем из канала."
                             )
 
                             await bot.send_message(
@@ -369,18 +369,18 @@ async def check_subscriptions():
                             )
                         except exceptions.BotBlocked:
                             logging.warning(
-                                f"⚠️ Бот заблокирован пользователем {user_id}"
+                                f"⚠️ Бот заблокирован пользователем {user_id} ({username})"
                             )
                         except Exception as e:
                             logging.error(
-                                f"❌ Ошибка при удалении {user_id} из канала: {e}"
+                                f"❌ Ошибка при удалении {user_id} ({username}) из канала: {e}"
                             )
 
                         db.expire_user(user_id)
 
                 except Exception as e:
                     logging.error(
-                        f"❌ Ошибка обработки подписки для {user_id}: {e}",
+                        f"❌ Ошибка обработки подписки для {user_id} ({username}): {e}",
                         exc_info=True,
                     )
                     continue
