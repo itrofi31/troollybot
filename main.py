@@ -241,12 +241,14 @@ async def successful_payment(message: types.Message):
 
         invite = await bot.create_chat_invite_link(chat_id=CHANNEL_ID, member_limit=1)
 
-        expiry_text = new_expiry.strftime("%d.%m.%Y") if new_expiry else "бессрочно"
+        expiry_text = (
+            new_expiry.strftime("%d.%m.%Y") if new_expiry else "у вас полный доступ✅"
+        )
 
         await message.answer(
             f"✅ Оплата успешно получена!\n"
-            f"Подписка активна до {expiry_text}.\n\n"
-            f"Вот ссылка на канал:\n{invite.invite_link}",
+            f"Подписка активна до: {expiry_text}.\n\n"
+            f"Вот ссылка на канал:\n{invite.invite_link}, присоединяйтесь!",
             reply_markup=main_menu,
         )
 
@@ -262,6 +264,10 @@ async def successful_payment(message: types.Message):
         )
         await message.answer(
             "⚠️ Произошла ошибка при регистрации оплаты. Администратор уже уведомлен."
+        )
+        await bot.send_message(
+            SUPPORT_USER_ID,
+            f"📩 Произошла ошибка при регистрации оплаты от {user_info(message.from_user)}",
         )
 
 
@@ -329,7 +335,7 @@ async def check_subscriptions():
                     days_left = (expiry - datetime.now()).days
 
                     # Уведомление за 3 дня
-                    if days_left == 3 and notified == 0:
+                    if days_left <= 3 and notified == 0:
                         try:
                             await bot.send_message(
                                 user_id,
@@ -337,7 +343,7 @@ async def check_subscriptions():
                             )
                             db.mark_notified(user_id)
                             logging.info(
-                                f"🔔 Напоминание: у {user_id} осталось 3 дня подписки"
+                                f"🔔 Напоминание: у {user_id} осталось {days_left} дней подписки"
                             )
                         except exceptions.BotBlocked:
                             logging.warning(
