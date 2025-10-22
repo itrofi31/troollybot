@@ -2,6 +2,8 @@ import sqlite3
 import logging
 from datetime import datetime, timedelta
 
+from helpers import calculate_expiry
+
 
 class Database:
     def __init__(self, path="subscriptions.db"):
@@ -82,21 +84,32 @@ class Database:
                     "SELECT expiry_date FROM subscriptions WHERE user_id=?", (user_id,)
                 )
                 result = self.cur.fetchone()
-
-                if result and result[0]:  # есть старая подписка
+                old_expiry = None
+                if result and result[0]:
                     try:
                         old_expiry = datetime.fromisoformat(result[0])
-                        if old_expiry > now:
-                            expiry = old_expiry + timedelta(days=30 * months)
-                        else:
-                            expiry = now + timedelta(days=30 * months)
                     except (ValueError, TypeError) as e:
+                        old_expiry = None
                         logging.warning(
                             f"⚠️ Ошибка парсинга старой даты для {user_id}: {e}"
                         )
-                        expiry = now + timedelta(days=30 * months)
-                else:
-                    expiry = now + timedelta(days=30 * months)
+                expiry = calculate_expiry(old_expiry, months)
+                # Новая дата окончания через нашу функцию
+
+                # if result and result[0]:  # есть старая подписка
+                #     try:
+                #         old_expiry = datetime.fromisoformat(result[0])
+                #         if old_expiry > now:
+                #             expiry = old_expiry + timedelta(days=30 * months)
+                #         else:
+                #             expiry = now + timedelta(days=30 * months)
+                #     except (ValueError, TypeError) as e:
+                #         logging.warning(
+                #             f"⚠️ Ошибка парсинга старой даты для {user_id}: {e}"
+                #         )
+                #         expiry = now + timedelta(days=30 * months)
+                # else:
+                #     expiry = now + timedelta(days=30 * months)
 
                 self.cur.execute(
                     """
