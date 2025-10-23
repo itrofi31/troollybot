@@ -302,8 +302,23 @@ async def process_support_message(message: types.Message, state: FSMContext):
 
 # ---------- Планировщик подписок ----------
 async def check_subscriptions():
-    """Проверка подписок с обработкой ошибок"""
+    """Проверка подписок каждый день в 00:01"""
     while True:
+        now = datetime.now()
+
+        # Следующее время проверки — сегодня в 00:01 или завтра
+        next_run = now.replace(hour=0, minute=1, second=0, microsecond=0)
+        if now >= next_run:
+            next_run = next_run + timedelta(days=1)
+
+        wait_time = (next_run - now).total_seconds()
+        logging.info(
+            f"⏳ Следующая проверка подписок в {next_run.strftime('%Y-%m-%d %H:%M:%S')} (через {wait_time/60:.1f} минут)"
+        )
+
+        # Ждём до 00:01
+        await asyncio.sleep(wait_time)
+
         try:
             subscriptions = db.get_all_subscriptions()
 
@@ -315,83 +330,54 @@ async def check_subscriptions():
                 status,
                 notified,
             ) in subscriptions:
-                try:
-                    # Полный доступ не истекает
-                    if full_access:
-                        continue
-
-                    # Проверяем наличие даты
-                    if not expiry_date:
-                        continue
-
-                    try:
-                        expiry = datetime.fromisoformat(expiry_date)
-                    except (ValueError, TypeError) as e:
-                        logging.error(
-                            f"❌ Некорректная дата для {user_id} ({username}): {expiry_date}"
-                        )
-                        continue
-
-                    days_left = (expiry - datetime.now()).days
-
-                    # Уведомление за 3 дня
-                    if days_left <= 3 and notified == 0:
-                        try:
-                            await bot.send_message(
-                                user_id,
-                                "🔔 Ваша подписка заканчивается через 3 дня! Чтобы не потерять доступ в клуб, оплатите ещё один месяц.",
-                            )
-                            db.mark_notified(user_id)
-                            logging.info(
-                                f"🔔 Напоминание: у {user_id} ({username}) осталось {days_left} дней подписки"
-                            )
-                        except exceptions.BotBlocked:
-                            logging.warning(
-                                f"⚠️ Бот заблокирован пользователем {user_id} ({username})"
-                            )
-                        except Exception as e:
-                            logging.error(
-                                f"❌ Ошибка отправки уведомления {user_id} ({username}): {e}"
-                            )
-
-                    # Подписка истекла
-                    elif expiry < datetime.now() and status == "active":
-                        try:
-                            await bot.ban_chat_member(CHANNEL_ID, user_id)
-                            await bot.unban_chat_member(CHANNEL_ID, user_id)
-                            logging.info(
-                                f"🚫 Подписка истекла у {user_id} ({username}). Удаляем из канала."
-                            )
-
-                            await bot.send_message(
-                                user_id,
-                                "🚫 Ваш доступ в книжный клуб к сожалению истек. Вы сможете вернуться, оплатив по кнопке ниже👇.",
-                            )
-                        except exceptions.BotBlocked:
-                            logging.warning(
-                                f"⚠️ Бот заблокирован пользователем {user_id} ({username})"
-                            )
-                        except Exception as e:
-                            logging.error(
-                                f"❌ Ошибка при удалении {user_id} ({username}) из канала: {e}"
-                            )
-
-                        db.expire_user(user_id)
-
-                except Exception as e:
-                    logging.error(
-                        f"❌ Ошибка обработки подписки для {user_id} ({username}): {e}",
-                        exc_info=True,
-                    )
+                # Полный доступ — пропускаем
+                if full_access:
                     continue
 
-            await asyncio.sleep(86400)  # Проверяем раз в день
+                # Нет даты окончания — пропускаем
+                if not expiry_date:
+                    continue
 
-        except Exception as e:
+                expiry = datetime.fromisoformat(expiry_date)
+                days_left = (expiry - datetime.now()).days
+
+                # Уведомление за 3 дня
+                if days_left <= 3 and notified == 0:
+                    try:
+                        await bot.send_message(
+                            user_id,
+                            "🔔 Ваша подписка заканчивается через 3 дня! Чтобы не потерять доступ в клуб, оплатите ещё один месяц.",
+                        )
+                        db.mark_notified(user_id)
+                        logging.info(
+                            f"🔔 Напоминание отправлено {user_id} ({username})"
+                        )
+                    except Exception as e:
+                        logging.error(
+                            f"❌ Ошибка отправки 3-дневного уведомления {user_id}: {e}"
+                        )
+
+                # Подписка истекла
+                if expiry < datetime.now() and status == "active":
+                    try:
+                        await bot.ban_chat_member(CHANNEL_ID, user_id)
+                        await bot.unban_chat_member(CHANNEL_ID, user_id)
+                        await bot.send_message(
+                            user_id,
+                            "🚫 Ваш доступ в книжный клуб истек. Вы сможете вернуться, оплатив по кнопке ниже 👇.",
+                            reply_markup=buy_month_inline,
+                        )
+                        logging.info(f"🚫 {user_id} удалён из канала за неуплату")
+                    except Exception as e:
+                        logging.error(f"❌ Ошибка удаления {user_id}: {e}")
+
+                    db.expire_user(user_id)
+
+        except Exception as critical_error:
             logging.error(
-                f"❌ Критическая ошибка в планировщике подписок: {e}", exc_info=True
+                f"❌ Критическая ошибка в планировщике: {critical_error}", exc_info=True
             )
-            await asyncio.sleep(300)  # При ошибке ждём 5 минут и пробуем снова
+            await asyncio.sleep(60)  # если упало — подождём 1 минуту и попробуем снова
 
 
 # ---------- Старт ----------
