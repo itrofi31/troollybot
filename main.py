@@ -198,7 +198,7 @@ async def process_buy_callback(callback_query: types.CallbackQuery):
         await bot.send_invoice(
             chat_id=callback_query.from_user.id,
             title=label,
-            description=f"{label} в книжный клуб",
+            description=f"{label} в книжный клуб для {callback_query.from_user.username}",
             payload=subscription_type,
             provider_token=PROVIDER_TOKEN,
             currency="RUB",
