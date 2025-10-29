@@ -1,6 +1,7 @@
 import os
 import asyncio
 import logging
+import json
 from datetime import datetime, timedelta
 
 from aiogram import Bot, Dispatcher, types
@@ -188,17 +189,37 @@ async def process_buy_callback(callback_query: types.CallbackQuery):
         label = (
             "Полный доступ" if subscription_type == "buy_full" else "Месячный доступ"
         )
+        description = f"{label} в книжный клуб для {callback_query.from_user.username}"
         amount = FULL_PRICE if subscription_type == "buy_full" else MONTH_PRICE
         prices = [LabeledPrice(label=label, amount=amount)]
-
         logging.info(
             f"➡️ Пользователь {callback_query.from_user.id} {callback_query.from_user}: нажал {callback_query.data}"
+        )
+        provider_data = json.dumps(
+            {
+                "receipt": {
+                    "items": [
+                        {
+                            "description": description,
+                            "quantity": 1,
+                            "amount": {
+                                "value": f"{amount / 100:.2f}",  # в РУБЛЯХ, не копейках
+                                "currency": "RUB",
+                            },
+                            "vat_code": 1,  # без НДС
+                            "payment_mode": "full_payment",  # полный расчёт
+                            "payment_subject": "service",  # тип услуги
+                        }
+                    ],
+                    "tax_system_code": 1,  # УСН (упрощённая система) — поменяй на свой код, если другой
+                }
+            }
         )
 
         await bot.send_invoice(
             chat_id=callback_query.from_user.id,
             title=label,
-            description=f"{label} в книжный клуб для {callback_query.from_user.username}",
+            description=description,
             payload=subscription_type,
             provider_token=PROVIDER_TOKEN,
             currency="RUB",
@@ -206,7 +227,9 @@ async def process_buy_callback(callback_query: types.CallbackQuery):
             start_parameter=subscription_type,
             need_email=True,
             send_email_to_provider=True,
+            provider_data=provider_data,
         )
+        await callback_query.answer()
     except Exception as e:
         logging.error(
             f"❌ Ошибка создания счёта для {callback_query.from_user.id}", exc_info=True
