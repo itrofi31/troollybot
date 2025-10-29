@@ -279,6 +279,10 @@ async def process_support_message(message: types.Message, state: FSMContext):
             SUPPORT_USER_ID,
             f"📩 Запрос от {user_info(message.from_user)}:\n\n{message.text}",
         )
+        await bot.send_message(
+            DEV_USER_ID,
+            f"📩 Запрос от {user_info(message.from_user)}:\n\n{message.text}",
+        )
         await message.answer(
             "✅ Ваш запрос отправлен администратору.", reply_markup=main_menu
         )
