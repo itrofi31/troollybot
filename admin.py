@@ -225,7 +225,7 @@ def register_admin_handlers(dp, db, support_user_id, dev_user_id, bot):
                     f"  ✅ {access}\n\n"
                 )
             text += (
-                f"━━━━━━━━━━━━━━━\n"
+                f"━━━━━━━━━━━━━━\n"
                 f"📦 Всего оплат: {total}\n"
                 f"💰 Общая сумма: {total_sum_rub:.2f} ₽"
             )
