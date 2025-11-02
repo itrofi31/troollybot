@@ -32,10 +32,15 @@ def register_admin_handlers(dp, db, support_user_id, dev_user_id, bot):
                 await bot.send_message(chat_id, "Нет пользователей на этой странице.")
                 return
 
-            text = f"📊 {title} (страница {page+1}/{pages})\n\n"
+            text = (
+                f"📊 {title.replace('_', ' ').capitalize()} (стр. {page+1}/{pages})\n"
+                f"━━━━━━━━━━━━━━━\n"
+                f"👥 Всего пользователей: {total}\n\n"
+            )
 
             for u in slice_users:
                 uid, username, expiry, full_access = u
+                username_display = f"@{username}" if username else f"(без username)"
 
                 if full_access:
                     access = "бессрочно (полный)"
@@ -48,7 +53,7 @@ def register_admin_handlers(dp, db, support_user_id, dev_user_id, bot):
                 else:
                     access = "нет подписки"
 
-                text += f"👤 ID: {uid}\n @{username}\n ✅ {access}\n\n"
+                text += f"👤 ID: {uid}\n" f"  {username_display}\n" f"  ✅ {access}\n\n"
 
             kb = InlineKeyboardMarkup()
 
@@ -180,6 +185,8 @@ def register_admin_handlers(dp, db, support_user_id, dev_user_id, bot):
                 await bot.send_message(chat_id, "Нет оплат.")
                 return
 
+            total_sum = sum(p[2] for p in payments)  # p[2] — amount (в копейках)
+            total_sum_rub = total_sum / 100
             pages = (total - 1) // PAGE_SIZE + 1
             offset = page * PAGE_SIZE
             slice_payments = payments[offset : offset + PAGE_SIZE]
@@ -197,6 +204,7 @@ def register_admin_handlers(dp, db, support_user_id, dev_user_id, bot):
                     date = datetime.fromisoformat(date_str).strftime("%d.%m.%Y %H:%M")
                 except (ValueError, TypeError):
                     date = "ошибка даты"
+                username_display = f"@{username}" if username else "без username"
 
                 if full:
                     access = "бессрочно (полный)"
@@ -215,6 +223,11 @@ def register_admin_handlers(dp, db, support_user_id, dev_user_id, bot):
                     f"  💳 {amount/100:.2f} {currency}\n"
                     f"  ⏰ {date}\n"
                     f"  ✅ {access}\n\n"
+                )
+                text += (
+                    f"━━━━━━━━━━━━━━━\n"
+                    f"📦 Всего оплат: {total}\n"
+                    f"💰 Общая сумма: {total_sum_rub:.2f} ₽"
                 )
 
             kb = InlineKeyboardMarkup()
