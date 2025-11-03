@@ -15,6 +15,7 @@ from aiogram.types import (
 from aiogram.utils import executor, exceptions
 from aiogram.dispatcher import FSMContext
 from aiogram.dispatcher.filters.state import State, StatesGroup
+from aiogram.utils.exceptions import TelegramAPIError
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from dotenv import load_dotenv
 
@@ -38,7 +39,7 @@ DEV_USER_ID = int(os.getenv("DEV_USER_ID"))
 MONTH_PRICE = int(os.getenv("MONTH_PRICE", "50000"))
 FULL_PRICE = int(os.getenv("FULL_PRICE", "150000"))
 
-bot = Bot(token=BOT_TOKEN)
+bot = Bot(token=BOT_TOKEN, timeout=30)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
@@ -433,8 +434,21 @@ async def check_subscriptions():
 
 # ---------- Старт ----------
 async def on_startup(dp):
-    asyncio.create_task(check_subscriptions())
     logging.info("🌐 Планировщик подписок запущен.")
+    asyncio.create_task(check_subscriptions())
+
+
+async def start_bot():
+    while True:
+        try:
+            logging.info("🚀 Бот запущен и работает 24/7")
+            await dp.start_polling(skip_updates=True, on_startup=on_startup)
+        except (asyncio.TimeoutError, TelegramAPIError) as e:
+            logging.error(f"[⚠️] Ошибка polling: {e}. Перезапуск через 5 сек.")
+            await asyncio.sleep(5)
+        except Exception as e:
+            logging.exception(f"[💥] Неизвестная ошибка polling: {e}")
+            await asyncio.sleep(10)
 
 
 if __name__ == "__main__":
