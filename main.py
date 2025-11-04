@@ -39,7 +39,7 @@ DEV_USER_ID = int(os.getenv("DEV_USER_ID"))
 MONTH_PRICE = int(os.getenv("MONTH_PRICE", "50000"))
 FULL_PRICE = int(os.getenv("FULL_PRICE", "150000"))
 
-bot = Bot(token=BOT_TOKEN, timeout=30)
+bot = Bot(token=BOT_TOKEN, timeout=60)
 storage = MemoryStorage()
 dp = Dispatcher(bot, storage=storage)
 
